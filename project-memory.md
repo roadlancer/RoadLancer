@@ -18,9 +18,9 @@ The platform is structured as a **Docker Compose monolithic suite** splitting co
 ### Backend REST API & WebSockets (`backend/`)
 - **Core Framework:** Django `>=5.1.6` + Django REST Framework (DRF `>=3.15.2`).
 - **Real-Time Engine:** Django Channels `>=4.2.0` powered by **Daphne `>=4.0.0`** ASGI server and Redis channel layer.
-- **Authentication:** Phone number + OTP primary auth issuing JWT tokens via `djangorestframework-simplejwt` (`Bearer <token>`).
+- **Authentication:** Phone number + OTP primary auth issuing stateful database sessions stored in Postgres via NextAuth v5 (Auth.js) and Prisma ORM (`Session` table).
 - **Async Workers & Scheduling:** Celery `>=5.4.0` + Celery Beat (Redis broker).
-- **Database ORM:** PostgreSQL 16 + PostGIS engine (`psycopg2-binary`).
+- **Database ORM:** PostgreSQL 16 + PostGIS engine (Django DDL owner + Prisma type-safe query client).
 
 ### AI & Pricing Microservice (`ai-service/`)
 - **Framework:** FastAPI `>=0.110.0` + Pydantic v2 + Uvicorn.
