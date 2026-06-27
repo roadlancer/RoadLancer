@@ -27,9 +27,6 @@ ai-service/*.pyc
 .DS_Store
 Thumbs.db
 
-# Docker
-docker/volumes/
-
 # Logs
 *.log
 storage/logs/*.log
