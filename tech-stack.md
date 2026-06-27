@@ -4,54 +4,28 @@
 
 ```mermaid
 graph TB
-    subgraph "Clients"
-        BROWSER["Browser<br/>(Driver / Shipper / Fleet / Admin)"]
-    end
-
-    subgraph "API Gateway"
-        NGINX["Nginx / Caddy<br/>Reverse Proxy + Auto SSL"]
+    subgraph "Browser"
+        UI["Laravel Blade + Vue.js 3<br/>(Driver / Shipper / Admin)"]
     end
 
     subgraph "Laravel Monolith"
-        LARAVEL["Laravel 12<br/>Blade + Vue.js 3<br/>REST API + Views"]
-        QUEUE["Laravel Queue Workers<br/>Async Jobs (Redis)"]
-        WS["Laravel Reverb<br/>WebSocket (Bidding + GPS)"]
+        LARAVEL["Laravel 12<br/>REST API + Blade Views"]
     end
 
     subgraph "AI Service"
-        FASTAPI["FastAPI<br/>AI Pricing Microservice"]
+        FASTAPI["FastAPI<br/>AI Pricing Engine"]
     end
 
-    subgraph "Data Layer"
-        PG["PostgreSQL 16 + PostGIS<br/>Core Data + Geospatial"]
-        REDIS["Redis 7<br/>Cache + Queue Broker + Sessions"]
-        S3["S3 / Cloudflare R2<br/>Documents + Photos"]
+    subgraph "Database"
+        PG["PostgreSQL 16<br/>All application data"]
     end
 
-    subgraph "External Services"
-        RAZORPAY["Razorpay<br/>Payments + Payouts"]
-        EXOTEL["Exotel<br/>Masked Calling + SMS + OTP"]
-        MAPS["Google Maps API<br/>Routing + Geocoding"]
-        FCM["Firebase Cloud Messaging<br/>Push Notifications"]
-    end
-
-    BROWSER --> NGINX
-    NGINX --> LARAVEL
-    NGINX --> WS
+    UI --> LARAVEL
     LARAVEL --> PG
-    LARAVEL --> REDIS
-    LARAVEL --> QUEUE
     LARAVEL --> FASTAPI
-    WS --> REDIS
-    QUEUE --> REDIS
-    QUEUE --> PG
-    QUEUE --> RAZORPAY
-    QUEUE --> EXOTEL
-    QUEUE --> FCM
-    FASTAPI --> PG
-    LARAVEL --> S3
-    LARAVEL --> MAPS
 ```
+
+> **Note:** This is a simplified college-project architecture. No Redis, no Docker, no WebSockets, no external API integrations. Everything runs locally with `php artisan serve` and `npm run dev`.
 
 ---
 
@@ -59,23 +33,14 @@ graph TB
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Framework** | Laravel 12 (PHP 8.2+) | Full-stack monolith with Blade templates, Eloquent ORM, built-in auth |
-| **ORM** | Eloquent | Database abstraction with migrations, relationships, and query builder |
-| **Templates** | Blade | Server-rendered views with `@vite` directive for Vue.js integration |
-| **Auth** | Laravel native sessions | Email/password auth with bcrypt hashing, database session storage |
-| **Queue** | Laravel Queue (Redis driver) | Async job processing: bid expiry, payment webhooks, OTP dispatch |
-| **Scheduler** | Laravel Task Scheduling | Cron-based recurring tasks via `php artisan schedule:run` |
-| **WebSockets** | Laravel Reverb | Real-time bidding updates + GPS location streaming |
-| **File Storage** | Laravel Filesystem (S3 driver) | Document uploads, verification photos, driver license scans |
-| **API** | Laravel API routes | RESTful JSON endpoints consumed by Vue.js components and mobile apps |
-
-### Why Laravel over Django?
-
-- **Monolith-first architecture** — Blade + Vue.js eliminates the complexity of a separate frontend deployment
-- **Built-in batteries** — Auth, queues, scheduling, broadcasting, file storage, and mail all ship natively
-- **Eloquent ORM** — Expressive ActiveRecord pattern with eager loading and relationship management
-- **Artisan CLI** — Code generation, migrations, and dev tooling out of the box
-- **Ecosystem maturity** — Laravel Forge, Vapor (serverless), Reverb (WebSockets) for production readiness
+| **Framework** | Laravel 12 (PHP 8.2+) | Full-stack monolith with Blade views and REST API |
+| **ORM** | Eloquent | Database queries, migrations, model relationships |
+| **Templates** | Blade | Server-rendered HTML pages |
+| **Auth** | Laravel native sessions | Email/password login with bcrypt hashing |
+| **Database** | PostgreSQL 16 | All application data (users, shipments, bids) |
+| **Cache** | File driver | Simple file-based caching (no Redis needed) |
+| **Queue** | Sync driver | Jobs run synchronously (no Redis/worker needed) |
+| **Sessions** | Database driver | Session data stored in PostgreSQL |
 
 ---
 
@@ -83,98 +48,56 @@ graph TB
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Framework** | Vue.js 3 (Composition API) | Reactive UI components embedded in Blade templates via Vite |
-| **Build Tool** | Vite | Lightning-fast HMR, CSS/JS bundling, integrated with Laravel via `@vite` |
-| **Styling** | Tailwind CSS 4 | Utility-first CSS for rapid, responsive UI development |
-| **State** | Pinia | Lightweight reactive stores for bid state, user session, tracking |
-| **HTTP Client** | Axios | API calls to Laravel backend and AI microservice |
-| **Forms** | VeeValidate + Zod | Schema-based form validation with Vue composables |
-| **Maps** | vue3-google-map | Shipment route display, driver GPS tracking on live map |
-| **Charts** | Chart.js + vue-chartjs | Admin analytics, shipper price history, driver earnings dashboards |
-| **i18n** | vue-i18n | Hindi + English localization at launch |
-
-### Vue.js Integration Pattern
-
-Vue components are embedded in Blade templates using Laravel's Vite integration:
-
-```blade
-{{-- resources/views/layouts/app.blade.php --}}
-<!DOCTYPE html>
-<html>
-<head>
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
-</head>
-<body>
-    <div id="app">
-        @yield('content')
-    </div>
-</body>
-</html>
-```
-
-```javascript
-// resources/js/app.js
-import { createApp } from 'vue'
-import BiddingPanel from './components/BiddingPanel.vue'
-
-const app = createApp({})
-app.component('bidding-panel', BiddingPanel)
-app.mount('#app')
-```
+| **Views** | Blade templates | Server-rendered pages (layouts, auth, dashboards) |
+| **Components** | Vue.js 3 (Composition API) | Interactive UI components (bidding panel, forms, charts) |
+| **Build Tool** | Vite | CSS/JS bundling with hot module replacement |
+| **Styling** | Tailwind CSS 4 | Utility-first responsive CSS |
+| **HTTP Client** | Axios | API calls from Vue components to Laravel backend |
+| **Charts** | Chart.js + vue-chartjs | Dashboard analytics and earnings visualizations |
 
 ---
 
-## AI & Pricing Microservice
+## AI Microservice
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Framework** | FastAPI 0.110+ | High-performance async Python API for ML inference |
-| **ML Engine** | scikit-learn / XGBoost | Price floor calculation and demand prediction models |
-| **Geospatial** | NumPy + SciPy | Backhaul matching via haversine distance calculations |
-| **Validation** | Pydantic v2 | Request/response schema validation with automatic OpenAPI docs |
-| **Server** | Uvicorn | ASGI server for production deployment |
+| **Framework** | FastAPI | Lightweight Python API for AI price calculations |
+| **Validation** | Pydantic v2 | Request/response schema validation |
+| **Server** | Uvicorn | ASGI development server |
 
 ### Endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/` | Health check |
-| `POST` | `/price-estimate` | Calculate AI price floor + market rate range |
-| `POST` | `/backhaul-suggest` | Ranked nearby return loads for deadhead reduction |
+| `POST` | `/price-estimate` | Calculate AI price floor + fair market range |
+| `POST` | `/backhaul-suggest` | Suggest nearby return loads (mocked data) |
 
 ---
 
-## Infrastructure
+## Development Tools
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Database** | PostgreSQL 16 + PostGIS | Relational data + geospatial corridor queries |
-| **Cache & Broker** | Redis 7 Alpine | Session storage, cache, queue broker, WebSocket pub/sub |
-| **Object Storage** | Cloudflare R2 / AWS S3 | Driver documents, verification photos, invoices |
-| **Containerization** | Docker + Docker Compose | Local dev environment and production deployment |
-| **Reverse Proxy** | Nginx / Caddy | SSL termination, static asset serving, load balancing |
-
----
-
-## External Service Integrations
-
-| Service | Provider | Purpose |
-|---------|----------|---------|
-| **Payments** | Razorpay | Escrow payment holds, split payouts, business subscriptions |
-| **Communication** | Exotel | SMS OTP dispatch, ExoPhone masked calling (prevents disintermediation) |
-| **Maps & Routing** | Google Maps Platform | Distance matrix, geocoding, route optimization, live tracking |
-| **Push Notifications** | Firebase Cloud Messaging | Real-time alerts for bid updates, shipment status, driver assignments |
+| Tool | Purpose |
+|------|---------|
+| **PHP 8.2+** | Laravel runtime |
+| **Composer** | PHP dependency management |
+| **Node.js 20+** | Vite build tool and npm packages |
+| **Python 3.11+** | FastAPI AI microservice runtime |
+| **uv** | Python dependency management |
+| **PostgreSQL 16** | Database (install locally) |
+| **DataGrip / pgAdmin** | Database GUI for inspection |
 
 ---
 
-## Security
+## Why This Stack? (College Project Rationale)
 
-| Measure | Implementation |
-|---------|---------------|
-| **Authentication** | Laravel session auth with bcrypt password hashing |
-| **CSRF Protection** | Laravel built-in CSRF tokens on all forms |
-| **SQL Injection** | Eloquent parameterized queries |
-| **XSS Prevention** | Blade auto-escaping `{{ }}` syntax |
-| **Rate Limiting** | Laravel `ThrottleRequests` middleware |
-| **CORS** | `config/cors.php` for API endpoint access control |
-| **Encryption** | `APP_KEY` based encryption for sensitive data at rest |
+| Choice | Reason |
+|--------|--------|
+| **Laravel** | Most popular PHP framework, excellent documentation, batteries-included (auth, ORM, validation, mail). Widely taught in universities. |
+| **Vue.js** | Gentle learning curve, pairs naturally with Laravel via Vite, reactive components without React complexity. |
+| **PostgreSQL** | Industry-standard relational database, free, supports complex queries. |
+| **FastAPI** | Simple Python microservice for demonstrating AI/ML integration. Auto-generates API docs at `/docs`. |
+| **Tailwind CSS** | Rapid UI development without writing custom CSS files. |
+| **No Redis** | Unnecessary complexity for a college demo. File cache and sync queue are sufficient. |
+| **No Docker** | Runs directly on laptop with `php artisan serve`. No containerization overhead. |
+| **No WebSockets** | Simple page refresh or AJAX polling is enough for bidding updates at demo scale. |

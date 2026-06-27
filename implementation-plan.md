@@ -1,191 +1,207 @@
-# RoadLancer — Implementation Plan
+# RoadLancer — Implementation Plan (College Project)
 
 > **References:** [project-scope.md](./project-scope.md) · [tech-stack.md](./tech-stack.md)
 
 ---
 
-## Phase 0 — Project Setup & Foundation
+## Phase 0 — Project Setup
 
-> **Goal:** Repository structure, tooling, Docker environment — everything needed before writing feature code.
+> **Goal:** Get the development environment running locally.
 
-### 0.1 Repository & Tooling
+### 0.1 Prerequisites
 
-- [ ] Clean project root (remove old Django/Next.js artifacts)
-- [ ] Update `.gitignore` for PHP/Laravel/Node
-- [ ] Update `README.md` with Laravel setup instructions
-- [ ] Configure pre-commit hooks (Laravel Pint for PHP, Prettier + ESLint for JS)
+- [ ] Install PHP 8.2+ with extensions (`mbstring`, `xml`, `curl`, `pgsql`, `zip`)
+- [ ] Install Composer 2.x
+- [ ] Install Node.js 20+ and npm
+- [ ] Install PostgreSQL 16 (local or Docker)
+- [ ] Install Python 3.11+ and `uv` (for AI microservice)
+- [ ] Create PostgreSQL database: `roadlancer` (user: `postgres`, password: `postgres`)
 
-### 0.2 Laravel Scaffolding
+### 0.2 Laravel Setup
 
-- [ ] Scaffold Laravel 12 project using `composer create-project laravel/laravel`
-- [ ] Configure `.env` with PostgreSQL credentials (`postgres:postgres@localhost:5432/roadlancer`)
-- [ ] Configure `config/database.php` for PostgreSQL connection
-- [ ] Configure `config/queue.php` with Redis driver
-- [ ] Configure `config/cache.php` with Redis driver
-- [ ] Configure `config/session.php` with database driver
-- [ ] Install and configure Laravel CORS (`config/cors.php`)
-- [ ] Create session migration (`php artisan session:table`)
-- [ ] Run initial migrations (`php artisan migrate`)
-- [ ] Create Dockerfile for Laravel (PHP-FPM + Nginx or `artisan serve`)
+- [ ] Scaffold Laravel project: `composer create-project laravel/laravel .`
+- [ ] Copy `.env.example` to `.env` and configure database credentials
+- [ ] Generate app key: `php artisan key:generate`
+- [ ] Run migrations: `php artisan migrate`
+- [ ] Verify: `php artisan serve` → visit http://localhost:8000
 
-### 0.3 Vue.js Integration
+### 0.3 Vue.js + Tailwind Setup
 
-- [ ] Install Vue.js 3 + `@vitejs/plugin-vue` via npm
-- [ ] Configure `vite.config.js` with Vue plugin
-- [ ] Create Vue app entry point (`resources/js/app.js`)
-- [ ] Install Tailwind CSS 4 and configure
-- [ ] Create base Blade layout (`resources/views/layouts/app.blade.php`) with `@vite` directive
-- [ ] Create welcome/landing Blade view with embedded Vue component
-- [ ] Install Axios for API calls
-- [ ] Install Pinia for state management
+- [ ] Install Vue.js: `npm install vue @vitejs/plugin-vue`
+- [ ] Install Tailwind CSS: `npm install -D tailwindcss @tailwindcss/vite`
+- [ ] Configure `vite.config.js` with Vue and Tailwind plugins
+- [ ] Create Vue entry point: `resources/js/app.js`
+- [ ] Create base Blade layout with `@vite` directive
+- [ ] Verify: `npm run dev` → Vite starts with hot reload
 
-### 0.4 AI Microservice (Preserved)
+### 0.4 AI Microservice
 
-- [x] FastAPI microservice with `/price-estimate` and `/backhaul-suggest` endpoints
-- [x] Health check verified on `http://localhost:8001/`
-
-### 0.5 Docker Compose
-
-- [ ] Update `docker-compose.yml` for Laravel services
-  - [ ] `app` service: Laravel PHP-FPM
-  - [ ] `nginx` service: Reverse proxy for Laravel
-  - [ ] `queue-worker` service: `php artisan queue:work redis`
-  - [ ] `scheduler` service: `php artisan schedule:run` (cron)
-  - [ ] Keep `postgres`, `redis`, `ai-service` services
-  - [ ] Remove old Django `backend`, `celery-worker`, `celery-beat`, `frontend` services
+- [x] FastAPI microservice with `/price-estimate` endpoint
+- [x] Start with: `cd ai-service && uv run uvicorn app.main:app --port 8001`
+- [x] Verify: visit http://localhost:8001/docs
 
 ---
 
-## Phase 1 — MVP Core Marketplace Loop
+## Phase 1 — Authentication & User Management
 
-> **Goal:** Working end-to-end flow: Register → Post Shipment → AI Price → Bid → Win → Verify → Pay.
+> **Goal:** Users can register, login, and access role-specific dashboards.
 
-### 1.1 Authentication (Laravel Native)
+### 1.1 Database Migrations
 
-- [ ] Create custom `users` migration: `id`, `name`, `email`, `password`, `phone`, `role` (enum: driver, shipper_personal, shipper_business, shipper_enterprise, admin), `is_verified`, `avatar`, timestamps
-- [ ] Create User Eloquent model with role casting, relationships
-- [ ] Create `RegisterController` (email, password, name, phone, role)
-- [ ] Create `LoginController` (email + password → session)
-- [ ] Create `LogoutController` (destroy session)
-- [ ] Create auth middleware for role-based access (`EnsureRole`)
-- [ ] Create Vue login component (`resources/js/components/Auth/LoginForm.vue`)
-- [ ] Create Vue register component (`resources/js/components/Auth/RegisterForm.vue`)
-- [ ] Create Blade auth pages (`resources/views/auth/login.blade.php`, `register.blade.php`)
-- [ ] Seed admin user via `database/seeders/AdminSeeder.php`
+- [ ] Create `users` migration: name, email, password, phone, role (enum: driver/shipper/admin), is_verified, timestamps
+- [ ] Create `sessions` migration: `php artisan session:table`
+- [ ] Run migrations
 
-### 1.2 Driver & Shipper Profiles
+### 1.2 User Model & Auth
 
-- [ ] Create `driver_profiles` migration: `user_id`, `license_number`, `vehicle_type`, `vehicle_registration`, `aadhaar_number`, `pan_number`, `insurance_expiry`, `verification_status`, `rating`, `total_trips`
-- [ ] Create `shipper_profiles` migration: `user_id`, `company_name`, `gst_number`, `pan_number`, `subscription_tier`, `total_shipments`
-- [ ] Create DriverProfile and ShipperProfile Eloquent models with User relationship
-- [ ] Create profile CRUD controllers and API routes
-- [ ] Create Vue profile components (driver dashboard, shipper dashboard)
+- [ ] Update User model with `role` enum casting, `phone` and `is_verified` fields
+- [ ] Create `RegisterController` — register with name, email, password, phone, role
+- [ ] Create `LoginController` — login with email + password
+- [ ] Create `LogoutController` — destroy session
+- [ ] Create role-based middleware: `EnsureRole` (driver, shipper, admin)
 
-### 1.3 Shipments
+### 1.3 Auth Views
 
-- [ ] Create `shipments` migration: `shipper_id`, `title`, `description`, `goods_category`, `weight_kg`, `pickup_address`, `pickup_lat`, `pickup_lng`, `dropoff_address`, `dropoff_lat`, `dropoff_lng`, `distance_km`, `vehicle_type_required`, `ai_floor_price`, `ai_estimated_min`, `ai_estimated_max`, `shipper_min_price`, `shipper_max_price`, `bidding_window` (enum: urgent_5m, standard_30m, scheduled_24h), `bidding_expires_at`, `status` (enum: draft, active, bidding, assigned, in_transit, delivered, completed, cancelled, expired), timestamps
-- [ ] Create Shipment Eloquent model with relationships (belongs to shipper, has many bids)
-- [ ] Create `ShipmentController` with CRUD endpoints
-- [ ] Integrate AI price floor: call `POST http://localhost:8001/price-estimate` on shipment creation
-- [ ] Create Google Maps distance matrix integration for auto-calculating `distance_km`
-- [ ] Create Vue shipment creation form with address autocomplete
-- [ ] Create Vue shipment listing with filters (status, distance, price range)
-- [ ] Create Vue shipment detail view with live bid feed
+- [ ] Create Blade layout (`resources/views/layouts/app.blade.php`)
+- [ ] Create login page (`resources/views/auth/login.blade.php`)
+- [ ] Create register page (`resources/views/auth/register.blade.php`)
+- [ ] Create navigation bar with role-based menu items
+- [ ] Redirect after login: drivers → driver dashboard, shippers → shipper dashboard
 
-### 1.4 Bidding System
+### 1.4 Dashboards (Skeleton)
 
-- [ ] Create `bids` migration: `shipment_id`, `driver_id`, `amount`, `estimated_delivery_hours`, `notes`, `status` (enum: pending, accepted, rejected, expired), timestamps
+- [ ] Create driver dashboard page (placeholder)
+- [ ] Create shipper dashboard page (placeholder)
+- [ ] Create admin dashboard page (placeholder)
+- [ ] Seed an admin user: `admin@roadlancer.in` / `password`
+
+---
+
+## Phase 2 — Shipments & AI Pricing
+
+> **Goal:** Shippers can create shipments with AI-calculated pricing.
+
+### 2.1 Shipment Model & Migration
+
+- [ ] Create `shipments` migration (see project-scope.md for schema)
+- [ ] Create Shipment Eloquent model with relationships (belongsTo shipper, hasMany bids)
+- [ ] Create ShipmentController with CRUD methods
+
+### 2.2 AI Price Integration
+
+- [ ] Create `AiPricingService` class — HTTP client that calls FastAPI `/price-estimate`
+- [ ] On shipment creation: auto-call AI service, populate `ai_floor_price`, `ai_estimated_min`, `ai_estimated_max`
+- [ ] Display AI price range on shipment creation form
+
+### 2.3 Shipment Views
+
+- [ ] Create shipment creation form (Blade + Vue component for dynamic pricing display)
+- [ ] Create shipment listing page (filterable by status, goods category)
+- [ ] Create shipment detail page (shows all info + bid list)
+- [ ] Shipper dashboard: "My Shipments" list with status badges
+
+### 2.4 Shipment Status Updates
+
+- [ ] Create status update API endpoint
+- [ ] Driver can mark: `in_transit` → `delivered`
+- [ ] Shipper can mark: `delivered` → `completed`
+- [ ] Status badge colors on listing page
+
+---
+
+## Phase 3 — Bidding System
+
+> **Goal:** Drivers can bid on shipments, shippers can accept bids.
+
+### 3.1 Bid Model & Migration
+
+- [ ] Create `bids` migration (see project-scope.md for schema)
 - [ ] Create Bid Eloquent model with relationships
-- [ ] Create `BidController`: place bid (validate against AI floor), list bids, accept bid
-- [ ] Create `BidExpiryJob` — Laravel Queue job that fires when bidding window closes, selects lowest bid as winner
-- [ ] Create `BidNotificationJob` — sends push notification to winning driver and losing bidders
-- [ ] Set up Laravel Reverb for real-time bid broadcasting
-- [ ] Create Vue bidding panel with countdown timer and live bid list
-- [ ] Implement no-bid fallback chain (auto-notify nearby drivers, AI re-price, window extension)
+- [ ] Validate: bid amount >= AI floor price
 
-### 1.5 Verification (Pickup & Delivery)
+### 3.2 Bidding API
 
-- [ ] Create `verifications` migration: `shipment_id`, `type` (enum: pickup, delivery), `otp_code`, `otp_verified_at`, `photo_url`, `verified_by_user_id`, timestamps
-- [ ] Create Verification Eloquent model
-- [ ] Create `VerificationController`: generate OTP, verify OTP, upload photo
-- [ ] Create Vue camera capture component (pickup/delivery photo proof)
-- [ ] Create Vue OTP input component
+- [ ] `POST /api/shipments/{id}/bids` — place a bid (driver only)
+- [ ] `GET /api/shipments/{id}/bids` — list all bids for a shipment
+- [ ] `PUT /api/bids/{id}/accept` — accept a bid (shipper only, auto-rejects others)
+- [ ] On bid acceptance: update shipment status to `assigned`, set `assigned_driver_id`
 
-### 1.6 Payments
+### 3.3 Bidding UI
 
-- [ ] Create `payments` migration: `shipment_id`, `razorpay_order_id`, `razorpay_payment_id`, `amount`, `platform_fee`, `driver_payout`, `status` (enum: pending, held, released, refunded), timestamps
-- [ ] Create Payment Eloquent model
-- [ ] Create `PaymentController`: create Razorpay order (escrow hold on shipment assignment)
-- [ ] Create `PaymentReleaseJob` — Queue job to release payout to driver after delivery verification
-- [ ] Create `PaymentWebhookController` — handle Razorpay webhook events
-- [ ] Create Vue payment status component
+- [ ] Vue component: BiddingPanel (shows current bids, place new bid form)
+- [ ] Real-time updates via polling (refresh bid list every 5 seconds using `setInterval`)
+- [ ] Driver dashboard: "My Bids" list with status
+- [ ] Countdown timer display (visual only, based on `bidding_ends_at`)
 
 ---
 
-## Phase 2 — Advanced Features & Intelligence
+## Phase 4 — Verification & Completion
 
-> **Goal:** Fleet management, analytics, AI improvements, and operational tooling.
+> **Goal:** OTP-based pickup/delivery verification.
 
-### 2.1 Fleet Management
+### 4.1 Verification Model & Migration
 
-- [ ] Create `vehicles` migration: `fleet_manager_id`, `driver_id`, `registration_number`, `vehicle_type`, `capacity_kg`, `insurance_expiry`, `fitness_certificate_expiry`, `is_active`
-- [ ] Create Vehicle Eloquent model
-- [ ] Create fleet management dashboard (assign drivers to vehicles, track fleet utilization)
-- [ ] Multi-vehicle bid assignment for fleet managers
+- [ ] Create `verifications` migration (see project-scope.md for schema)
+- [ ] Create Verification model
 
-### 2.2 Analytics & Reporting
+### 4.2 OTP Flow
 
-- [ ] Create admin dashboard with Chart.js visualizations
-- [ ] Shipper analytics: price history, shipment volume, cost trends
-- [ ] Driver analytics: earnings, trip count, rating trends, utilization rate
-- [ ] Platform analytics: GMV, active users, conversion rates, average bid counts
+- [ ] Generate random 4-digit OTP on shipment assignment (for pickup)
+- [ ] Display OTP to shipper on their dashboard
+- [ ] Driver enters OTP to confirm pickup → status changes to `in_transit`
+- [ ] Generate new OTP for delivery
+- [ ] Shipper enters delivery OTP → status changes to `delivered`
+- [ ] *(Mock OTP — no real SMS integration, just displayed on screen)*
 
-### 2.3 AI Model Improvements
+### 4.3 Verification UI
 
-- [ ] Train XGBoost model on historical shipment pricing data
-- [ ] Implement demand surge multiplier based on corridor congestion
-- [ ] Backhaul matching with geospatial polygon corridor analysis (PostGIS)
-- [ ] Seasonal pricing adjustments (monsoon, harvest, festive periods)
-
-### 2.4 Notifications & Communication
-
-- [ ] Exotel SMS OTP integration for phone verification
-- [ ] Exotel ExoPhone masked calling between driver and shipper
-- [ ] Firebase Cloud Messaging push notifications
-- [ ] Email notifications via Laravel Mail (Mailgun/SES driver)
+- [ ] Vue component: OTP input (4 digit boxes)
+- [ ] Success/error toast notifications
 
 ---
 
-## Phase 3 — Scale & Production Readiness
+## Phase 5 — Admin Panel & Analytics
 
-> **Goal:** Production deployment, performance optimization, and security hardening.
+> **Goal:** Admin can manage the platform and view basic analytics.
 
-### 3.1 Production Deployment
+### 5.1 Admin Features
 
-- [ ] Configure Laravel Forge or Vapor for deployment
-- [ ] Set up Nginx with SSL (Let's Encrypt / Caddy)
-- [ ] Configure production `.env` (database pooling, Redis cluster, S3 storage)
-- [ ] Set up Laravel Horizon for queue monitoring
-- [ ] Set up Laravel Telescope for debugging (dev/staging only)
+- [ ] User management: list all users, view details, toggle verification status
+- [ ] Shipment management: list all shipments, view details, filter by status
+- [ ] Basic moderation: ability to cancel shipments, ban users
 
-### 3.2 Performance
+### 5.2 Analytics Dashboard
 
-- [ ] Database indexing strategy (shipment corridors, bid lookups, user searches)
-- [ ] Eloquent eager loading optimization (N+1 query prevention)
-- [ ] Redis caching for hot data (active shipments, price estimates)
-- [ ] Vite production build optimization (code splitting, tree shaking)
+- [ ] Total users count (drivers vs shippers)
+- [ ] Total shipments by status (pie chart)
+- [ ] Shipments over time (line chart)
+- [ ] Average bid amounts (bar chart)
+- [ ] Vue component with Chart.js visualizations
 
-### 3.3 Security Hardening
+---
 
-- [ ] Rate limiting on auth and bidding endpoints
-- [ ] Input sanitization and validation on all controllers
-- [ ] CORS policy tightening for production domains
-- [ ] Database query audit (ensure no raw SQL injection vectors)
-- [ ] File upload validation (type, size, malware scanning)
+## Phase 6 — Polish & Presentation
 
-### 3.4 Testing
+> **Goal:** Make it demo-ready for college submission.
 
-- [ ] PHPUnit feature tests for auth flow, shipment CRUD, bidding logic
-- [ ] Laravel Dusk browser tests for Vue component interactions
-- [ ] API integration tests for AI microservice communication
-- [ ] Load testing with Laravel's built-in HTTP client
+### 6.1 UI Polish
+
+- [ ] Consistent Tailwind styling across all pages
+- [ ] Mobile responsive layouts
+- [ ] Loading spinners and error states
+- [ ] Empty state illustrations ("No shipments yet")
+- [ ] Toast notifications for actions (bid placed, shipment created, etc.)
+
+### 6.2 Seed Data
+
+- [ ] Create database seeder with sample users (3 drivers, 2 shippers, 1 admin)
+- [ ] Create sample shipments across different statuses
+- [ ] Create sample bids on active shipments
+- [ ] Run with: `php artisan db:seed`
+
+### 6.3 Documentation
+
+- [ ] Update README.md with final setup instructions
+- [ ] Add screenshots to README
+- [ ] Prepare demo script (walkthrough of all features)
+- [ ] Create project report / presentation slides
