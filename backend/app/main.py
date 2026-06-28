@@ -1,9 +1,16 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import shipments, auth
+from app.middleware import RequestLoggingMiddleware, RateLimitMiddleware
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = FastAPI(
     title="RoadLancer API",
@@ -11,6 +18,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Order matters: outermost middleware runs first
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],

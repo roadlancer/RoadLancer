@@ -13,11 +13,13 @@ const user = ref<User | null>(null)
 const loading = ref(true)
 let initialized = false
 
-async function fetchSession() {
+export { user, loading }
+
+export async function fetchSession() {
   loading.value = true
   try {
     const { data } = await authClient.getSession()
-    user.value = (data?.user as User) ?? null
+    user.value = (data?.user as unknown as User) ?? null
   } catch {
     user.value = null
   } finally {
