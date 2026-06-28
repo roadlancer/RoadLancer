@@ -1,16 +1,11 @@
 <script lang="ts" setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
 import NavBar from '@/components/NavBar.vue'
-
-const route = useRoute()
-const showNavBar = computed(() => route.name !== 'login')
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <NavBar v-if="showNavBar" />
-    <main>
+  <div class="min-h-screen flex flex-col bg-gray-50">
+    <NavBar />
+    <main class="flex-1 flex flex-col">
       <router-view />
     </main>
   </div>
