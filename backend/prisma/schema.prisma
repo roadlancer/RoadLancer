@@ -1,0 +1,138 @@
+generator client {
+  provider                  = "prisma-client-py"
+  enable_experimental_decimal = true
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// === Auth tables (managed by Better Auth, read-only here) ===
+
+model user {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false) @map("email_verified")
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  role          String    @default("driver")
+  phone         String?
+
+  session         session[]
+  account         account[]
+  shipments       shipments[] @relation("Shipper")
+  assignedShipments shipments[] @relation("Driver")
+  bids            bids[]
+
+  @@map("user")
+}
+
+model session {
+  id           String   @id
+  expiresAt    DateTime @map("expires_at")
+  token        String   @unique
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  userId       String   @map("user_id")
+  user         user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model account {
+  id                    String    @id
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  user                  user      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("account")
+}
+
+model auth_verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("verification")
+}
+
+// === Business tables ===
+
+model shipments {
+  id               String    @id @default(uuid())
+  shipperId        String    @map("shipper_id")
+  title            String
+  goodsCategory    String    @map("goods_category")
+  weightKg         Decimal   @map("weight_kg") @db.Decimal(10, 2)
+  pickupAddress    String    @map("pickup_address")
+  dropoffAddress   String    @map("dropoff_address")
+  distanceKm       Decimal   @map("distance_km") @db.Decimal(10, 2)
+  vehicleType      String    @map("vehicle_type")
+  aiFloorPrice     Decimal?  @map("ai_floor_price") @db.Decimal(10, 2)
+  aiEstimatedMin   Decimal?  @map("ai_estimated_min") @db.Decimal(10, 2)
+  aiEstimatedMax   Decimal?  @map("ai_estimated_max") @db.Decimal(10, 2)
+  shipperBudget    Decimal?  @map("shipper_budget") @db.Decimal(10, 2)
+  status           String    @default("draft")
+  assignedDriverId String?   @map("assigned_driver_id")
+  biddingEndsAt    DateTime? @map("bidding_ends_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  shipper        user?   @relation("Shipper", fields: [shipperId], references: [id], onDelete: Cascade)
+  assignedDriver user?   @relation("Driver", fields: [assignedDriverId], references: [id], onDelete: SetNull)
+  bids           bids[]
+  verifications  verifications[]
+
+  @@map("shipments")
+}
+
+model bids {
+  id         String   @id @default(uuid())
+  shipmentId String   @map("shipment_id")
+  driverId   String   @map("driver_id")
+  amount     Decimal  @db.Decimal(10, 2)
+  message    String?
+  status     String   @default("pending")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  shipment shipments @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  driver   user      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@map("bids")
+}
+
+model verifications {
+  id         String    @id @default(uuid())
+  shipmentId String    @map("shipment_id")
+  type       String
+  otpCode    String    @map("otp_code")
+  isVerified Boolean   @default(false) @map("is_verified")
+  verifiedAt DateTime? @map("verified_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  shipment shipments @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@map("verifications")
+}
