@@ -4,6 +4,11 @@ import { useRouter } from 'vue-router'
 import { z } from 'zod'
 import { signIn } from '@/lib/auth-client'
 import { useAuth } from '@/composables/useAuth'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import { LoaderCircle, Mail, Lock } from '@lucide/vue'
 
 const router = useRouter()
 const { fetchSession } = useAuth()
@@ -160,105 +165,86 @@ async function handleSubmit() {
     </div>
 
     <!-- Right Side — Login Form -->
-    <div class="w-full lg:w-[58%] flex items-center justify-center p-8 bg-gray-50">
+    <div class="w-full lg:w-[58%] flex items-center justify-center p-8 bg-background">
       <div class="w-full max-w-md">
         <div class="lg:hidden flex items-center gap-2 mb-8">
-          <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
-            <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <div class="w-9 h-9 bg-primary rounded-xl flex items-center justify-center">
+            <svg class="w-5 h-5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H18.75m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
             </svg>
           </div>
-          <span class="text-xl font-bold text-gray-900">RoadLancer</span>
+          <span class="text-xl font-bold text-foreground">RoadLancer</span>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <h2 class="text-2xl font-bold text-gray-900 mb-1">Welcome back</h2>
-          <p class="text-gray-500 mb-6">Sign in to your account</p>
-
-          <div
-            v-if="submitError"
-            class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2"
-          >
-            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-            </svg>
-            {{ submitError }}
-          </div>
-
-          <form @submit.prevent="handleSubmit" class="space-y-4" novalidate>
-            <div>
-              <label for="email" class="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-              <div class="relative">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-                  </svg>
-                </div>
-                <input
-                  id="email"
-                  v-model="form.email"
-                  type="email"
-                  required
-                  placeholder="you@example.com"
-                  @input="handleInput('email')"
-                  @blur="handleBlur('email')"
-                  :class="[
-                    'block w-full pl-10 pr-3 py-2.5 border rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition',
-                    errors.email ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                  ]"
-                />
-              </div>
-              <p v-if="errors.email" class="mt-1.5 text-sm text-red-600">{{ errors.email }}</p>
-            </div>
-
-            <div>
-              <label for="password" class="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
-              <div class="relative">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
-                  </svg>
-                </div>
-                <input
-                  id="password"
-                  v-model="form.password"
-                  type="password"
-                  required
-                  placeholder="Enter your password"
-                  @input="handleInput('password')"
-                  @blur="handleBlur('password')"
-                  :class="[
-                    'block w-full pl-10 pr-3 py-2.5 border rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition',
-                    errors.password ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                  ]"
-                />
-              </div>
-              <p v-if="errors.password" class="mt-1.5 text-sm text-red-600">{{ errors.password }}</p>
-            </div>
-
-            <button
-              type="submit"
-              :disabled="submitting"
-              class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg text-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center gap-2"
+        <Card>
+          <CardHeader class="text-center">
+            <CardTitle class="text-2xl">Welcome back</CardTitle>
+            <CardDescription>Sign in to your account</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div
+              v-if="submitError"
+              class="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm flex items-center gap-2"
             >
-              <svg
-                v-if="submitting"
-                class="w-4 h-4 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
               </svg>
-              {{ submitting ? 'Signing in...' : 'Sign in' }}
-            </button>
-          </form>
+              {{ submitError }}
+            </div>
 
-          <p class="mt-6 text-center text-sm text-gray-500">
-            Don't have an account?
-            <a href="#" class="text-blue-600 hover:text-blue-700 font-medium">Sign up</a>
-          </p>
-        </div>
+            <form @submit.prevent="handleSubmit" class="space-y-4" novalidate>
+              <div class="space-y-2">
+                <Label for="email">Email</Label>
+                <div class="relative">
+                  <Mail class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    v-model="form.email"
+                    type="email"
+                    required
+                    placeholder="you@example.com"
+                    autocomplete="new-password"
+                    class="pl-9"
+                    :class="errors.email ? 'border-destructive focus-visible:ring-destructive/20' : ''"
+                    @input="handleInput('email')"
+                    @blur="handleBlur('email')"
+                  />
+                </div>
+                <p v-if="errors.email" class="text-sm text-destructive">{{ errors.email }}</p>
+              </div>
+
+              <div class="space-y-2">
+                <Label for="password">Password</Label>
+                <div class="relative">
+                  <Lock class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    v-model="form.password"
+                    type="password"
+                    required
+                    placeholder="Enter your password"
+                    autocomplete="new-password"
+                    class="pl-9"
+                    :class="errors.password ? 'border-destructive focus-visible:ring-destructive/20' : ''"
+                    @input="handleInput('password')"
+                    @blur="handleBlur('password')"
+                  />
+                </div>
+                <p v-if="errors.password" class="text-sm text-destructive">{{ errors.password }}</p>
+              </div>
+
+              <Button type="submit" :disabled="submitting" class="w-full" size="lg">
+                <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
+                {{ submitting ? 'Signing in...' : 'Sign in' }}
+              </Button>
+            </form>
+
+            <p class="mt-6 text-center text-sm text-muted-foreground">
+              Don't have an account?
+              <a href="#" class="text-primary hover:text-primary/80 font-medium">Sign up</a>
+            </p>
+          </CardContent>
+        </Card>
       </div>
     </div>
   </div>
