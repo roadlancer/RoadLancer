@@ -20,6 +20,22 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  user: {
+    additionalFields: {
+      role: {
+        type: ["driver", "shipper", "admin"],
+        required: false,
+        defaultValue: "driver",
+        input: true,
+      },
+      phone: {
+        type: "string",
+        required: false,
+        unique: true,
+        input: true,
+      },
+    },
+  },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // 1 day
