@@ -1,36 +1,66 @@
 <script lang="ts" setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
+import { z } from 'zod'
 import { signIn } from '@/lib/auth-client'
 import { useAuth } from '@/composables/useAuth'
 
 const router = useRouter()
 const { fetchSession } = useAuth()
 
-const email = ref('')
-const password = ref('')
-const error = ref('')
+const submitError = ref('')
 const submitting = ref(false)
 
-async function handleSubmit() {
-  error.value = ''
-  submitting.value = true
+const form = reactive({ email: '', password: '' })
+const errors = reactive({ email: '', password: '' })
 
+const schema = z.object({
+  email: z.string().min(1, 'Email is required').email('Invalid email address'),
+  password: z.string().min(1, 'Password is required').min(6, 'Password must be at least 6 characters'),
+})
+
+function validate(field?: 'email' | 'password') {
+  const fields = field ? [field] : ['email', 'password'] as const
+  let valid = true
+  for (const f of fields) {
+    const result = schema.shape[f].safeParse(form[f])
+    errors[f] = result.success ? '' : (result.error.issues[0]?.message ?? '')
+    if (!result.success) valid = false
+  }
+  return valid
+}
+
+function handleInput(field: 'email' | 'password') {
+  submitError.value = ''
+  if (errors[field] && errors[field] !== ' ') validate(field)
+}
+
+function handleBlur(field: 'email' | 'password') {
+  validate(field)
+}
+
+async function handleSubmit() {
+  submitError.value = ''
+  if (!validate()) return
+
+  submitting.value = true
   try {
     const { error: signInError } = await signIn.email({
-      email: email.value,
-      password: password.value,
+      email: form.email,
+      password: form.password,
     })
 
     if (signInError) {
-      error.value = signInError.message || 'Invalid email or password'
+      submitError.value = signInError.message || 'Invalid email or password'
+      errors.email = errors.email || ' '
+      errors.password = errors.password || ' '
       return
     }
 
     await fetchSession()
     router.push('/')
   } catch {
-    error.value = 'Something went wrong. Please try again.'
+    submitError.value = 'Something went wrong. Please try again.'
   } finally {
     submitting.value = false
   }
@@ -43,17 +73,14 @@ async function handleSubmit() {
     <div
       class="hidden lg:flex lg:w-[42%] relative bg-gradient-to-br from-blue-600 via-blue-700 to-teal-600 text-white p-12 flex-col justify-between overflow-hidden"
     >
-      <!-- Background decorations -->
       <div class="absolute inset-0 opacity-10">
         <div class="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl" />
         <div class="absolute bottom-20 right-10 w-96 h-96 bg-teal-300 rounded-full blur-3xl" />
         <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-400 rounded-full blur-[120px]" />
       </div>
 
-      <!-- Grid pattern overlay -->
       <div class="absolute inset-0 opacity-[0.03]" style="background-image: url(&quot;data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E&quot;)" />
 
-      <!-- Top — Logo -->
       <div class="relative z-10">
         <div class="flex items-center gap-3 mb-2">
           <div class="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/10">
@@ -65,7 +92,6 @@ async function handleSubmit() {
         </div>
       </div>
 
-      <!-- Middle — Content -->
       <div class="relative z-10 space-y-8">
         <div>
           <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full text-sm font-medium backdrop-blur-sm border border-white/10 mb-6">
@@ -81,7 +107,6 @@ async function handleSubmit() {
           </p>
         </div>
 
-        <!-- Feature list -->
         <div class="space-y-4">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10">
@@ -109,7 +134,6 @@ async function handleSubmit() {
           </div>
         </div>
 
-        <!-- Stats -->
         <div class="grid grid-cols-3 gap-4 pt-4 border-t border-white/10">
           <div>
             <div class="text-2xl font-bold">5K+</div>
@@ -126,7 +150,6 @@ async function handleSubmit() {
         </div>
       </div>
 
-      <!-- Bottom — Footer -->
       <div class="relative z-10 flex items-center justify-between text-blue-200 text-sm">
         <div>&copy; 2026 RoadLancer. All rights reserved.</div>
         <div class="flex gap-4">
@@ -137,9 +160,8 @@ async function handleSubmit() {
     </div>
 
     <!-- Right Side — Login Form -->
-    <div class="w-full lg:w-[60%] flex items-center justify-center p-8 bg-gray-50">
+    <div class="w-full lg:w-[58%] flex items-center justify-center p-8 bg-gray-50">
       <div class="w-full max-w-md">
-        <!-- Mobile logo -->
         <div class="lg:hidden flex items-center gap-2 mb-8">
           <div class="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center">
             <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -154,16 +176,16 @@ async function handleSubmit() {
           <p class="text-gray-500 mb-6">Sign in to your account</p>
 
           <div
-            v-if="error"
+            v-if="submitError"
             class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2"
           >
             <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
             </svg>
-            {{ error }}
+            {{ submitError }}
           </div>
 
-          <form @submit.prevent="handleSubmit" class="space-y-4">
+          <form @submit.prevent="handleSubmit" class="space-y-4" novalidate>
             <div>
               <label for="email" class="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
               <div class="relative">
@@ -174,13 +196,19 @@ async function handleSubmit() {
                 </div>
                 <input
                   id="email"
-                  v-model="email"
+                  v-model="form.email"
                   type="email"
                   required
                   placeholder="you@example.com"
-                  class="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  @input="handleInput('email')"
+                  @blur="handleBlur('email')"
+                  :class="[
+                    'block w-full pl-10 pr-3 py-2.5 border rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition',
+                    errors.email ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                  ]"
                 />
               </div>
+              <p v-if="errors.email" class="mt-1.5 text-sm text-red-600">{{ errors.email }}</p>
             </div>
 
             <div>
@@ -193,13 +221,19 @@ async function handleSubmit() {
                 </div>
                 <input
                   id="password"
-                  v-model="password"
+                  v-model="form.password"
                   type="password"
                   required
                   placeholder="Enter your password"
-                  class="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  @input="handleInput('password')"
+                  @blur="handleBlur('password')"
+                  :class="[
+                    'block w-full pl-10 pr-3 py-2.5 border rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition',
+                    errors.password ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                  ]"
                 />
               </div>
+              <p v-if="errors.password" class="mt-1.5 text-sm text-red-600">{{ errors.password }}</p>
             </div>
 
             <button
