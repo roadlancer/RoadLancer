@@ -9,7 +9,6 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
-      meta: { requiresAuth: true },
     },
     {
       path: '/login',
@@ -17,14 +16,6 @@ const router = createRouter({
       component: LoginView,
     },
   ],
-})
-
-router.beforeEach((to) => {
-  const hasCookie = document.cookie.includes('better-auth.session_token=')
-
-  if (to.meta.requiresAuth && !hasCookie) {
-    return { name: 'login' }
-  }
 })
 
 export default router
