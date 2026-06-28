@@ -7,6 +7,12 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Role {
+  driver
+  shipper
+  admin
+}
+
 model user {
   id            String    @id @default(cuid())
   name          String
@@ -15,6 +21,9 @@ model user {
   image         String?
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  role   Role    @default(driver)
+  phone  String? @unique
 
   session  session[]
   account  account[]
