@@ -14,6 +14,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Framework:** FastAPI (Python 3.12+)
 - **ORM:** Prisma (`prisma-client-py` v0.15.0)
 - **Auth:** Session-based via Bearer token → DB lookup (not JWT)
+- **Middleware:** RequestLoggingMiddleware, RateLimitMiddleware (60 req/min/IP)
 - **AI Pricing:** scikit-learn, numpy (bundled in same service)
 - **Port:** 8000
 
@@ -30,9 +31,13 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Framework:** Vue.js 3 (Composition API)
 - **Build Tool:** Vite
 - **Styling:** Tailwind CSS 4
-- **UI Library:** shadcn-vue (reka-ui primitives, Lucide icons)
+- **UI Library:** shadcn-vue (reka-ui primitives, Lucide icons via `@lucide/vue`)
+- **Theme:** Teal (primary: `oklch(0.511 0.096 186.391)`)
 - **Form Validation:** Zod v4 + manual `safeParse()` (no vuehookform)
 - **Auth Client:** `better-auth` vanilla client (`baseURL: ''` for Vite proxy)
+- **Router:** Vue Router with auth navigation guards
+- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert
+- **Layout:** Sticky NavBar, Footer, centered login card
 - **Port:** 5173
 
 ---
@@ -47,6 +52,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Database | PostgreSQL 16 | Standard SQL, no PostGIS |
 | Session Type | Database + Bearer | Opaque tokens verified via DB lookup, not JWT |
 | UI Library | shadcn-vue | Accessible, themeable, Tailwind-native components |
+| Theme | Teal | Blue-green accent for transportation/logistics branding |
 | Form Validation | Zod + manual | `@vuehookform/core` incompatible with Zod v4 runtime |
 | Auth Client | `better-auth` vanilla | `@better-auth/vue` removed; singleton composable pattern |
 | Cache | File driver | No Redis needed for local dev |
@@ -66,7 +72,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 1 | Project Restructure (Laravel → FastAPI + Better Auth) | ✅ Complete |
 | Phase 2 | Better Auth Server Setup | ✅ Complete |
 | Phase 3 | FastAPI Backend Setup | ✅ Complete |
-| Phase 4 | Vue.js Frontend Setup (Login, NavBar, Home) | ✅ Complete |
+| Phase 4 | Vue.js Frontend Setup (Login, NavBar, Home, Footer) | ✅ Complete |
 | Phase 5 | Core Features (shipments, bids, verification) | ⬜ Not Started |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
@@ -91,7 +97,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 
 ---
 
-## 🔐 8. Authentication System
+## 🔐 6. Authentication System
 
 ### Overview
 Authentication uses **Better Auth** (Node.js) for session management and **FastAPI** (Python) for session verification via database lookup. Sessions are **database-backed** with opaque Bearer tokens — not JWT.
@@ -140,7 +146,9 @@ FastAPI dependency: get_current_user()
 ### Frontend Auth Implementation
 - **Client:** `better-auth/vue` `createAuthClient({ baseURL: '' })` — empty baseURL for Vite proxy
 - **Composable:** `useAuth()` — singleton pattern (lazy-init), provides `user`, `loading`, `fetchSession()`, `signOut()`
-- **Router:** No HttpOnly cookie guards (JS can't read them); composable handles auth state
+- **Router:** Vue Router with auth navigation guards (`beforeEach`)
+  - `meta.requiresAuth` → redirects to `/login` if not authenticated
+  - `meta.guest` → redirects to `/` if already authenticated
 - **Login:** `signIn.email()` → `fetchSession()` → `router.push('/')`
 - **Sign out:** `authClient.signOut()` → clears user → `window.location.href = '/login'`
 
@@ -148,6 +156,11 @@ FastAPI dependency: get_current_user()
 - **Dependency:** `get_current_user(authorization: Header)` — extracts Bearer token
 - **Verification:** DB lookup on `session` table → expiry check → user lookup
 - **Protected routes:** `user: dict = Depends(get_current_user)` in FastAPI
+
+### Backend Middleware
+- **RequestLoggingMiddleware:** Logs `METHOD /path → status (duration)` for every request
+- **RateLimitMiddleware:** 60 requests per IP per 60 seconds, returns 429 if exceeded
+- **CORSMiddleware:** Allows `http://localhost:5173` with credentials
 
 ### Environment Variables
 | Variable | Location | Value |
@@ -164,7 +177,37 @@ FastAPI dependency: get_current_user()
 
 ---
 
-## 🔑 6. Default Accounts
+## 🎨 7. UI Components & Layout
+
+### shadcn-vue Components Installed
+| Component | Purpose |
+|-----------|---------|
+| Button | Primary actions, social login |
+| Input | Email, phone, password fields |
+| Label | Form field labels |
+| Card | Login card, home dashboard cards |
+| Avatar | User avatar with fallback |
+| Badge | Role display |
+| Separator | Visual dividers |
+| Tabs | Email/phone login switcher |
+| Checkbox | Remember me |
+| Alert | Error messages |
+
+### Layout Structure
+- **App.vue:** `min-h-screen flex flex-col bg-background` → NavBar → `<main class="flex-1">` → Footer
+- **NavBar:** Sticky (`sticky top-0 z-50 backdrop-blur-md`), shows role text only, sign out button
+- **Footer:** Brand, 3 link columns (Product, Company, Legal), social icons, copyright
+- **Login:** Centered card with tabs (email/phone), social login, "Sign up" link
+
+### Theme (Teal)
+- **Primary:** `oklch(0.511 0.096 186.391)` — teal blue-green
+- **Primary Foreground:** `oklch(0.984 0.014 180.72)` — light teal tint
+- **Charts:** Teal gradient palette (chart-1 through chart-5)
+- **Dark mode:** Supported via `.dark` class
+
+---
+
+## 🔑 8. Default Accounts
 
 | Role | Email | Password |
 |------|-------|----------|
@@ -174,7 +217,7 @@ FastAPI dependency: get_current_user()
 
 ---
 
-## ⚠️ 7. Known Issues & Workarounds
+## ⚠️ 9. Known Issues & Workarounds
 
 - **Prisma 7 (auth-server):** Requires `prisma-client` generator (not `prisma-client-js`), driver adapter (`@prisma/adapter-pg`), no `url` in schema (URL in `prisma.config.ts`)
 - **Python Prisma (`prisma-client-py`):** Still requires `url` in schema
@@ -183,3 +226,26 @@ FastAPI dependency: get_current_user()
 - **HttpOnly cookies:** Can't read in JS — removed router guards, auth composable handles all state
 - **Backend `pyproject.toml`:** Missing `[tool.setuptools.packages]` — `pip install -e .` broken; install deps individually
 - **Chrome autofill:** Use `autocomplete="new-password"` on inputs to prevent yellow background
+- **Vite cache:** Clear `node_modules/.vite` when changing imports (e.g., lucide-vue-next → @lucide/vue)
+- **TypeScript schema indexing:** Cast `schema.shape` to `Record<string, any>` when indexing with string
+
+---
+
+## 📁 10. Key Files
+
+| File | Purpose |
+|------|---------|
+| `auth-server/auth.ts` | Better Auth config — trusted origins, Bearer plugin, role enum |
+| `auth-server/server.ts` | Hono server (port 3000) |
+| `auth-server/prisma/schema.prisma` | Auth schema — enum Role, user/session/account/verification |
+| `backend/app/main.py` | FastAPI app with CORS, logging, rate limit middleware |
+| `backend/app/middleware.py` | RequestLoggingMiddleware, RateLimitMiddleware |
+| `backend/app/routes/auth.py` | Session-based auth via Bearer token → DB lookup |
+| `backend/app/routes/shipments.py` | Shipment CRUD + bid routes |
+| `frontend/src/style.css` | Tailwind v4 + shadcn teal theme + autofill overrides |
+| `frontend/src/router/index.ts` | Vue Router with auth navigation guards |
+| `frontend/src/composables/useAuth.ts` | Singleton composable — exports `user`, `loading`, `fetchSession` |
+| `frontend/src/components/NavBar.vue` | Sticky nav — role text, sign out |
+| `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
+| `frontend/src/views/LoginView.vue` | Centered card — tabs, social login, Zod validation |
+| `frontend/src/views/HomeView.vue` | Dashboard — avatar, role badge, info cards |

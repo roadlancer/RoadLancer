@@ -8,7 +8,7 @@ const { user, loading, signOut } = useAuth()
 </script>
 
 <template>
-  <nav class="bg-background border-b border-gray-200 px-4 sm:px-6 lg:px-8">
+  <nav class="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-gray-200 px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between h-16 items-center">
       <!-- Logo -->
       <router-link to="/" class="flex items-center gap-2.5">
