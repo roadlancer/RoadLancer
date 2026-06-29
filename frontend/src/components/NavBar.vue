@@ -2,7 +2,7 @@
 import { useAuth } from '@/composables/useAuth'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Truck, LogOut } from '@lucide/vue'
+import { Truck, LayoutDashboard, LogOut } from '@lucide/vue'
 
 const { user, loading, signOut } = useAuth()
 </script>
@@ -16,6 +16,16 @@ const { user, loading, signOut } = useAuth()
           <Truck class="size-4 text-primary-foreground" />
         </div>
         <span class="text-lg font-bold text-foreground hidden sm:block">RoadLancer</span>
+      </router-link>
+
+      <!-- Center — Dashboard link (role-based) -->
+      <router-link
+        v-if="!loading && user && (user.role === 'driver' || user.role === 'shipper')"
+        :to="user.role === 'driver' ? '/driver' : '/shipper'"
+        class="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition"
+      >
+        <LayoutDashboard class="size-4" />
+        <span class="hidden sm:inline">Dashboard</span>
       </router-link>
 
       <!-- Right side — User info -->
@@ -43,7 +53,7 @@ const { user, loading, signOut } = useAuth()
 
       <!-- Not logged in -->
       <router-link v-else to="/login">
-        <Button variant="ghost" size="sm">Sign in</Button>
+        <Button size="sm">Sign in</Button>
       </router-link>
     </div>
   </nav>

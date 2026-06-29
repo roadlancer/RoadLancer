@@ -5,12 +5,23 @@ const port = 3000;
 
 console.log(`🔐 Better Auth server starting on http://localhost:${port}`);
 
-serve({
+const server = serve({
   fetch: auth.handler,
   port,
   hostname: "0.0.0.0",
+}, (info) => {
+  console.log(`✅ Better Auth server running on http://localhost:${info.port}`);
+  console.log(`📋 Health check: http://localhost:${info.port}/api/auth/ok`);
+  console.log(`🔗 Auth API: http://localhost:${info.port}/api/auth/`);
 });
 
-console.log(`✅ Better Auth server running on http://localhost:${port}`);
-console.log(`📋 Health check: http://localhost:${port}/api/auth/ok`);
-console.log(`🔗 Auth API: http://localhost:${port}/api/auth/`);
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled rejection:", err);
+});
+
+// Keep the process alive
+process.stdin.resume();

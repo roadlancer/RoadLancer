@@ -2,8 +2,8 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { z } from 'zod'
-import { signIn } from '@/lib/auth-client'
-import { useAuth } from '@/composables/useAuth'
+import { signIn, authClient } from '@/lib/auth-client'
+import { useAuth, user } from '@/composables/useAuth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { LoaderCircle, Mail, Lock, Phone, AlertCircle, Truck } from '@lucide/vue'
 
 const router = useRouter()
@@ -21,7 +22,7 @@ const submitError = ref('')
 const submitting = ref(false)
 const activeTab = ref('email')
 
-const form = reactive({ email: '', phone: '', password: '' })
+const form = reactive({ email: '', phone: '', password: '', role: 'driver' as 'driver' | 'shipper' })
 const errors = reactive({ email: '', phone: '', password: '' })
 
 const emailSchema = z.object({
@@ -74,7 +75,20 @@ async function handleSubmit() {
     }
 
     await fetchSession()
-    router.push('/')
+
+    const actualRole = user.value?.role
+    if (actualRole !== form.role) {
+      submitError.value = 'Invalid credentials. Please try again.'
+      await authClient.signOut()
+      user.value = null
+      return
+    }
+
+    if (actualRole === 'driver') {
+      router.push('/driver')
+    } else {
+      router.push('/shipper')
+    }
   } catch {
     submitError.value = 'Something went wrong. Please try again.'
   } finally {
@@ -165,6 +179,30 @@ async function handleSubmit() {
                     <p v-if="errors.password" class="text-sm text-destructive">{{ errors.password }}</p>
                   </div>
 
+                  <!-- Role Selection -->
+                  <RadioGroup v-model="form.role" class="grid grid-cols-2 gap-3">
+                    <label
+                      for="role-driver-email"
+                      class="flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors"
+                      :class="form.role === 'driver' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'"
+                    >
+                      <RadioGroupItem value="driver" id="role-driver-email" />
+                      <Truck class="size-4" />
+                      <span class="text-sm font-medium">Driver</span>
+                    </label>
+                    <label
+                      for="role-shipper-email"
+                      class="flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors"
+                      :class="form.role === 'shipper' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'"
+                    >
+                      <RadioGroupItem value="shipper" id="role-shipper-email" />
+                      <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                      </svg>
+                      <span class="text-sm font-medium">Shipper</span>
+                    </label>
+                  </RadioGroup>
+
                   <div class="flex items-center space-x-2">
                     <Checkbox id="remember" />
                     <Label for="remember" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -224,6 +262,30 @@ async function handleSubmit() {
                     </div>
                     <p v-if="errors.password" class="text-sm text-destructive">{{ errors.password }}</p>
                   </div>
+
+                  <!-- Role Selection -->
+                  <RadioGroup v-model="form.role" class="grid grid-cols-2 gap-3">
+                    <label
+                      for="role-driver-phone"
+                      class="flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors"
+                      :class="form.role === 'driver' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'"
+                    >
+                      <RadioGroupItem value="driver" id="role-driver-phone" />
+                      <Truck class="size-4" />
+                      <span class="text-sm font-medium">Driver</span>
+                    </label>
+                    <label
+                      for="role-shipper-phone"
+                      class="flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors"
+                      :class="form.role === 'shipper' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'"
+                    >
+                      <RadioGroupItem value="shipper" id="role-shipper-phone" />
+                      <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
+                      </svg>
+                      <span class="text-sm font-medium">Shipper</span>
+                    </label>
+                  </RadioGroup>
 
                   <div class="flex items-center space-x-2">
                     <Checkbox id="remember-phone" />

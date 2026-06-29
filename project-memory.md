@@ -36,8 +36,8 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Form Validation:** Zod v4 + manual `safeParse()` (no vuehookform)
 - **Auth Client:** `better-auth` vanilla client (`baseURL: ''` for Vite proxy)
 - **Router:** Vue Router with auth navigation guards
-- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert
-- **Layout:** Sticky NavBar, Footer, centered login card
+- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup
+- **Layout:** Sticky NavBar, Footer, centered login card with role selection
 - **Port:** 5173
 
 ---
@@ -55,6 +55,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Theme | Teal | Blue-green accent for transportation/logistics branding |
 | Form Validation | Zod + manual | `@vuehookform/core` incompatible with Zod v4 runtime |
 | Auth Client | `better-auth` vanilla | `@better-auth/vue` removed; singleton composable pattern |
+| User Roles | driver, shipper only | Admin removed for simplicity — college-level project |
 | Cache | File driver | No Redis needed for local dev |
 | Queue | Sync driver | Jobs run immediately, no worker process |
 | Real-time | AJAX polling (5s) | No WebSocket complexity |
@@ -105,7 +106,8 @@ Authentication uses **Better Auth** (Node.js) for session management and **FastA
 ### Auth Flow
 ```
 Vue Frontend (5173)
-  ↓ signIn.email({ email, password })
+  ↓ User selects role (driver/shipper)
+  ↓ signIn.email({ email, password, name: role })
   ↓ → Vite proxy → localhost:3000/api/auth/sign-in/email
 Better Auth Server (3000)
   ↓ Validates credentials against PostgreSQL
@@ -115,7 +117,7 @@ Better Auth Server (3000)
 Frontend receives response
   ↓ Stores token via authClient.getSession() (reads cookie)
   ↓ useAuth() composable holds user state globally
-  ↓ router.push('/') → NavBar shows user info
+  ↓ router.push('/') → NavBar shows role-based dashboard link
 ```
 
 ### Session Verification (FastAPI Backend)
@@ -138,10 +140,11 @@ FastAPI dependency: get_current_user()
 | `verification` | Email verification tokens |
 
 ### Role System
-- **Enum:** `driver` | `shipper` | `admin`
+- **Enum:** `driver` | `shipper` (admin removed for simplicity)
 - **Default:** `driver`
-- **Stored as:** Prisma enum in DB, string array in Better Auth config (`type: ["driver", "shipper", "admin"]`)
+- **Stored as:** Prisma enum in DB, string array in Better Auth config (`type: ["driver", "shipper"]`)
 - **Access:** `user.role` available in frontend after `fetchSession()`
+- **Login:** User selects role via radio buttons before signing in
 
 ### Frontend Auth Implementation
 - **Client:** `better-auth/vue` `createAuthClient({ baseURL: '' })` — empty baseURL for Vite proxy
@@ -149,7 +152,8 @@ FastAPI dependency: get_current_user()
 - **Router:** Vue Router with auth navigation guards (`beforeEach`)
   - `meta.requiresAuth` → redirects to `/login` if not authenticated
   - `meta.guest` → redirects to `/` if already authenticated
-- **Login:** `signIn.email()` → `fetchSession()` → `router.push('/')`
+  - `meta.role` → redirects to `/` if user role doesn't match
+- **Login:** Role radio buttons → `signIn.email()` → `fetchSession()` → validates `user.role` against selected role → `router.push('/driver'|'/shipper')` → if mismatch: generic error + sign out
 - **Sign out:** `authClient.signOut()` → clears user → `window.location.href = '/login'`
 
 ### Backend Auth Implementation
@@ -192,12 +196,13 @@ FastAPI dependency: get_current_user()
 | Tabs | Email/phone login switcher |
 | Checkbox | Remember me |
 | Alert | Error messages |
+| RadioGroup | Role selection (driver/shipper) |
 
 ### Layout Structure
 - **App.vue:** `min-h-screen flex flex-col bg-background` → NavBar → `<main class="flex-1">` → Footer
-- **NavBar:** Sticky (`sticky top-0 z-50 backdrop-blur-md`), shows role text only, sign out button
+- **NavBar:** Sticky (`sticky top-0 z-50 backdrop-blur-md`), role-based dashboard link, sign out button, Sign in button uses default primary teal background
 - **Footer:** Brand, 3 link columns (Product, Company, Legal), social icons, copyright
-- **Login:** Centered card with tabs (email/phone), social login, "Sign up" link
+- **Login:** Centered card with role radio buttons, tabs (email/phone), social login
 
 ### Theme (Teal)
 - **Primary:** `oklch(0.511 0.096 186.391)` — teal blue-green
@@ -205,15 +210,24 @@ FastAPI dependency: get_current_user()
 - **Charts:** Teal gradient palette (chart-1 through chart-5)
 - **Dark mode:** Supported via `.dark` class
 
+### Pages
+| Route | Component | Access |
+|-------|-----------|--------|
+| `/` | HomeView | All authenticated users |
+| `/login` | LoginView | Guest only |
+| `/driver` | DriverDashboard | Driver only |
+| `/shipper` | ShipperDashboard | Shipper only |
+
 ---
 
 ## 🔑 8. Default Accounts
 
 | Role | Email | Password |
 |------|-------|----------|
-| Admin | admin@roadlancer.com | admin123 |
 | Driver | driver@roadlancer.com | driver123 |
 | Shipper | shipper@roadlancer.com | shipper123 |
+
+> **Note:** Only these two accounts should exist. Old admin/test users must be deleted from DB if found.
 
 ---
 
@@ -222,12 +236,16 @@ FastAPI dependency: get_current_user()
 - **Prisma 7 (auth-server):** Requires `prisma-client` generator (not `prisma-client-js`), driver adapter (`@prisma/adapter-pg`), no `url` in schema (URL in `prisma.config.ts`)
 - **Python Prisma (`prisma-client-py`):** Still requires `url` in schema
 - **`@vuehookform/core`:** Incompatible with Zod v4 — `extractSubSchema` traverses `_def.checks` causing runtime crashes. Use manual `safeParse()` instead
-- **Better Auth enum workaround:** `type: ["driver", "shipper", "admin"]` in `additionalFields`
+- **Better Auth enum workaround:** `type: ["driver", "shipper"]` in `additionalFields`
 - **HttpOnly cookies:** Can't read in JS — removed router guards, auth composable handles all state
 - **Backend `pyproject.toml`:** Missing `[tool.setuptools.packages]` — `pip install -e .` broken; install deps individually
 - **Chrome autofill:** Use `autocomplete="new-password"` on inputs to prevent yellow background
+- **Auth server startup:** Must use `setsid` (not `< /dev/null`) to keep Hono alive — `process.stdin.resume()` fails when stdin is redirected
 - **Vite cache:** Clear `node_modules/.vite` when changing imports (e.g., lucide-vue-next → @lucide/vue)
 - **TypeScript schema indexing:** Cast `schema.shape` to `Record<string, any>` when indexing with string
+- **Login role validation:** After `fetchSession()`, compare `user.role` with selected role — mismatch shows generic "Invalid credentials" error (never reveals actual role for security)
+- **Old admin user:** If old admin user exists with role `driver`, login succeeds with driver radio button — delete stale users from DB
+- **Seed users must have passwords:** Users created via Prisma directly have no password hash — always register via `/api/auth/sign-up/email` endpoint
 
 ---
 
@@ -238,14 +256,17 @@ FastAPI dependency: get_current_user()
 | `auth-server/auth.ts` | Better Auth config — trusted origins, Bearer plugin, role enum |
 | `auth-server/server.ts` | Hono server (port 3000) |
 | `auth-server/prisma/schema.prisma` | Auth schema — enum Role, user/session/account/verification |
+| `auth-server/seed.ts` | Database seeder — driver and shipper users |
 | `backend/app/main.py` | FastAPI app with CORS, logging, rate limit middleware |
 | `backend/app/middleware.py` | RequestLoggingMiddleware, RateLimitMiddleware |
 | `backend/app/routes/auth.py` | Session-based auth via Bearer token → DB lookup |
 | `backend/app/routes/shipments.py` | Shipment CRUD + bid routes |
 | `frontend/src/style.css` | Tailwind v4 + shadcn teal theme + autofill overrides |
-| `frontend/src/router/index.ts` | Vue Router with auth navigation guards |
+| `frontend/src/router/index.ts` | Vue Router with auth + role navigation guards |
 | `frontend/src/composables/useAuth.ts` | Singleton composable — exports `user`, `loading`, `fetchSession` |
-| `frontend/src/components/NavBar.vue` | Sticky nav — role text, sign out |
+| `frontend/src/components/NavBar.vue` | Sticky nav — role dashboard link, sign out |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
-| `frontend/src/views/LoginView.vue` | Centered card — tabs, social login, Zod validation |
+| `frontend/src/views/LoginView.vue` | Role radio buttons, tabs, social login, Zod validation |
 | `frontend/src/views/HomeView.vue` | Dashboard — avatar, role badge, info cards |
+| `frontend/src/views/DriverDashboard.vue` | Driver-only page |
+| `frontend/src/views/ShipperDashboard.vue` | Shipper-only page |
