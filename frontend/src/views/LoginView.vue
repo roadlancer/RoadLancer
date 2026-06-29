@@ -4,43 +4,55 @@ import { useRouter } from 'vue-router'
 import { z } from 'zod'
 import { signIn } from '@/lib/auth-client'
 import { useAuth } from '@/composables/useAuth'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
-import { LoaderCircle, Mail, Lock } from '@lucide/vue'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
+import { LoaderCircle, Mail, Lock, Phone, AlertCircle, Truck } from '@lucide/vue'
 
 const router = useRouter()
 const { fetchSession } = useAuth()
 
 const submitError = ref('')
 const submitting = ref(false)
+const activeTab = ref('email')
 
-const form = reactive({ email: '', password: '' })
-const errors = reactive({ email: '', password: '' })
+const form = reactive({ email: '', phone: '', password: '' })
+const errors = reactive({ email: '', phone: '', password: '' })
 
-const schema = z.object({
+const emailSchema = z.object({
   email: z.string().min(1, 'Email is required').email('Invalid email address'),
   password: z.string().min(1, 'Password is required').min(6, 'Password must be at least 6 characters'),
 })
 
-function validate(field?: 'email' | 'password') {
-  const fields = field ? [field] : ['email', 'password'] as const
+const phoneSchema = z.object({
+  phone: z.string().min(1, 'Phone number is required').regex(/^\+?[\d\s-]{10,}$/, 'Invalid phone number'),
+  password: z.string().min(1, 'Password is required').min(6, 'Password must be at least 6 characters'),
+})
+
+function validate(field?: string) {
   let valid = true
+  const fields = field ? [field] : activeTab.value === 'email' ? ['email', 'password'] : ['phone', 'password']
+  const schema = activeTab.value === 'email' ? emailSchema : phoneSchema
+  
   for (const f of fields) {
-    const result = schema.shape[f].safeParse(form[f])
-    errors[f] = result.success ? '' : (result.error.issues[0]?.message ?? '')
+    const result = (schema.shape as Record<string, any>)[f].safeParse(form[f as keyof typeof form])
+    errors[f as keyof typeof errors] = result.success ? '' : (result.error.issues[0]?.message ?? '')
     if (!result.success) valid = false
   }
   return valid
 }
 
-function handleInput(field: 'email' | 'password') {
+function handleInput(field: string) {
   submitError.value = ''
-  if (errors[field] && errors[field] !== ' ') validate(field)
+  if (errors[field as keyof typeof errors]) validate(field)
 }
 
-function handleBlur(field: 'email' | 'password') {
+function handleBlur(field: string) {
   validate(field)
 }
 
@@ -50,15 +62,14 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
+    const email = activeTab.value === 'email' ? form.email : form.phone
     const { error: signInError } = await signIn.email({
-      email: form.email,
+      email,
       password: form.password,
     })
 
     if (signInError) {
-      submitError.value = signInError.message || 'Invalid email or password'
-      errors.email = errors.email || ' '
-      errors.password = errors.password || ' '
+      submitError.value = signInError.message || 'Invalid credentials'
       return
     }
 
@@ -73,105 +84,12 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="flex-1 flex">
-    <!-- Left Side — Branding -->
-    <div
-      class="hidden lg:flex lg:w-[42%] relative bg-gradient-to-br from-blue-600 via-blue-700 to-teal-600 text-white p-12 flex-col justify-between overflow-hidden"
-    >
-      <div class="absolute inset-0 opacity-10">
-        <div class="absolute top-20 left-10 w-72 h-72 bg-white rounded-full blur-3xl" />
-        <div class="absolute bottom-20 right-10 w-96 h-96 bg-teal-300 rounded-full blur-3xl" />
-        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-400 rounded-full blur-[120px]" />
-      </div>
-
-      <div class="absolute inset-0 opacity-[0.03]" style="background-image: url(&quot;data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E&quot;)" />
-
-      <div class="relative z-10">
-        <div class="flex items-center gap-3 mb-2">
-          <div class="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/10">
-            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H18.75m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-            </svg>
-          </div>
-          <h1 class="text-2xl font-bold tracking-tight">RoadLancer</h1>
-        </div>
-      </div>
-
-      <div class="relative z-10 space-y-8">
-        <div>
-          <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full text-sm font-medium backdrop-blur-sm border border-white/10 mb-6">
-            <span class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-            Trusted by 10,000+ drivers
-          </div>
-          <h2 class="text-4xl font-bold leading-tight mb-4">
-            AI-Powered<br />Transportation<br />
-            <span class="text-teal-300">Management</span>
-          </h2>
-          <p class="text-blue-100 text-lg max-w-md leading-relaxed">
-            Connecting truck drivers with shippers through intelligent logistics and real-time bidding.
-          </p>
-        </div>
-
-        <div class="space-y-4">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10">
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21h3.64m-3.64 0h-3.64m0-1.5h3.64m11.14 0h-3.64m0 0V9.349m0 11.651v-3.64" />
-              </svg>
-            </div>
-            <span class="text-blue-50">Connect drivers & shippers instantly</span>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10">
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" />
-              </svg>
-            </div>
-            <span class="text-blue-50">AI-powered price estimation</span>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm border border-white/10">
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" />
-              </svg>
-            </div>
-            <span class="text-blue-50">Real-time bidding system</span>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-3 gap-4 pt-4 border-t border-white/10">
-          <div>
-            <div class="text-2xl font-bold">5K+</div>
-            <div class="text-blue-200 text-sm">Shipments</div>
-          </div>
-          <div>
-            <div class="text-2xl font-bold">98%</div>
-            <div class="text-blue-200 text-sm">On-time</div>
-          </div>
-          <div>
-            <div class="text-2xl font-bold">4.9</div>
-            <div class="text-blue-200 text-sm">Rating</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="relative z-10 flex items-center justify-between text-blue-200 text-sm">
-        <div>&copy; 2026 RoadLancer. All rights reserved.</div>
-        <div class="flex gap-4">
-          <a href="#" class="hover:text-white transition">Privacy</a>
-          <a href="#" class="hover:text-white transition">Terms</a>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right Side — Login Form -->
-    <div class="w-full lg:w-[58%] flex items-center justify-center p-8 bg-background">
+  <div class="flex-1 flex items-center justify-center p-8 bg-background">
       <div class="w-full max-w-md">
+        <!-- Mobile logo -->
         <div class="lg:hidden flex items-center gap-2 mb-8">
           <div class="w-9 h-9 bg-primary rounded-xl flex items-center justify-center">
-            <svg class="w-5 h-5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H18.75m-7.5-3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-            </svg>
+            <Truck class="w-5 h-5 text-primary-foreground" />
           </div>
           <span class="text-xl font-bold text-foreground">RoadLancer</span>
         </div>
@@ -182,70 +100,180 @@ async function handleSubmit() {
             <CardDescription>Sign in to your account</CardDescription>
           </CardHeader>
           <CardContent>
-            <div
-              v-if="submitError"
-              class="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive text-sm flex items-center gap-2"
-            >
-              <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-              </svg>
-              {{ submitError }}
+            <!-- Error Alert -->
+            <Alert v-if="submitError" variant="destructive" class="mb-4">
+              <AlertCircle class="h-4 w-4" />
+              <AlertDescription>{{ submitError }}</AlertDescription>
+            </Alert>
+
+            <!-- Login Tabs -->
+            <Tabs v-model="activeTab" class="w-full">
+              <TabsList class="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="email">
+                  <Mail class="w-4 h-4 mr-2" />
+                  Email
+                </TabsTrigger>
+                <TabsTrigger value="phone">
+                  <Phone class="w-4 h-4 mr-2" />
+                  Phone
+                </TabsTrigger>
+              </TabsList>
+
+              <!-- Email Login -->
+              <TabsContent value="email">
+                <form @submit.prevent="handleSubmit" class="space-y-4" novalidate>
+                  <div class="space-y-2">
+                    <Label for="email">Email</Label>
+                    <div class="relative">
+                      <Mail class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        v-model="form.email"
+                        type="email"
+                        required
+                        placeholder="you@example.com"
+                        autocomplete="new-password"
+                        class="pl-9"
+                        :class="errors.email ? 'border-destructive focus-visible:ring-destructive/20' : ''"
+                        @input="handleInput('email')"
+                        @blur="handleBlur('email')"
+                      />
+                    </div>
+                    <p v-if="errors.email" class="text-sm text-destructive">{{ errors.email }}</p>
+                  </div>
+
+                  <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                      <Label for="password">Password</Label>
+                      <a href="#" class="text-sm text-primary hover:text-primary/80">Forgot password?</a>
+                    </div>
+                    <div class="relative">
+                      <Lock class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Input
+                        id="password"
+                        v-model="form.password"
+                        type="password"
+                        required
+                        placeholder="Enter your password"
+                        autocomplete="new-password"
+                        class="pl-9"
+                        :class="errors.password ? 'border-destructive focus-visible:ring-destructive/20' : ''"
+                        @input="handleInput('password')"
+                        @blur="handleBlur('password')"
+                      />
+                    </div>
+                    <p v-if="errors.password" class="text-sm text-destructive">{{ errors.password }}</p>
+                  </div>
+
+                  <div class="flex items-center space-x-2">
+                    <Checkbox id="remember" />
+                    <Label for="remember" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Remember me
+                    </Label>
+                  </div>
+
+                  <Button type="submit" :disabled="submitting" class="w-full" size="lg">
+                    <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
+                    {{ submitting ? 'Signing in...' : 'Sign in' }}
+                  </Button>
+                </form>
+              </TabsContent>
+
+              <!-- Phone Login -->
+              <TabsContent value="phone">
+                <form @submit.prevent="handleSubmit" class="space-y-4" novalidate>
+                  <div class="space-y-2">
+                    <Label for="phone">Phone Number</Label>
+                    <div class="relative">
+                      <Phone class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Input
+                        id="phone"
+                        v-model="form.phone"
+                        type="tel"
+                        required
+                        placeholder="+1 (555) 000-0000"
+                        autocomplete="new-password"
+                        class="pl-9"
+                        :class="errors.phone ? 'border-destructive focus-visible:ring-destructive/20' : ''"
+                        @input="handleInput('phone')"
+                        @blur="handleBlur('phone')"
+                      />
+                    </div>
+                    <p v-if="errors.phone" class="text-sm text-destructive">{{ errors.phone }}</p>
+                  </div>
+
+                  <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                      <Label for="password-phone">Password</Label>
+                      <a href="#" class="text-sm text-primary hover:text-primary/80">Forgot password?</a>
+                    </div>
+                    <div class="relative">
+                      <Lock class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Input
+                        id="password-phone"
+                        v-model="form.password"
+                        type="password"
+                        required
+                        placeholder="Enter your password"
+                        autocomplete="new-password"
+                        class="pl-9"
+                        :class="errors.password ? 'border-destructive focus-visible:ring-destructive/20' : ''"
+                        @input="handleInput('password')"
+                        @blur="handleBlur('password')"
+                      />
+                    </div>
+                    <p v-if="errors.password" class="text-sm text-destructive">{{ errors.password }}</p>
+                  </div>
+
+                  <div class="flex items-center space-x-2">
+                    <Checkbox id="remember-phone" />
+                    <Label for="remember-phone" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Remember me
+                    </Label>
+                  </div>
+
+                  <Button type="submit" :disabled="submitting" class="w-full" size="lg">
+                    <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
+                    {{ submitting ? 'Signing in...' : 'Sign in' }}
+                  </Button>
+                </form>
+              </TabsContent>
+            </Tabs>
+
+            <!-- Divider -->
+            <div class="relative my-6">
+              <Separator />
+              <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-sm text-muted-foreground">
+                Or continue with
+              </div>
             </div>
 
-            <form @submit.prevent="handleSubmit" class="space-y-4" novalidate>
-              <div class="space-y-2">
-                <Label for="email">Email</Label>
-                <div class="relative">
-                  <Mail class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    v-model="form.email"
-                    type="email"
-                    required
-                    placeholder="you@example.com"
-                    autocomplete="new-password"
-                    class="pl-9"
-                    :class="errors.email ? 'border-destructive focus-visible:ring-destructive/20' : ''"
-                    @input="handleInput('email')"
-                    @blur="handleBlur('email')"
-                  />
-                </div>
-                <p v-if="errors.email" class="text-sm text-destructive">{{ errors.email }}</p>
-              </div>
-
-              <div class="space-y-2">
-                <Label for="password">Password</Label>
-                <div class="relative">
-                  <Lock class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    v-model="form.password"
-                    type="password"
-                    required
-                    placeholder="Enter your password"
-                    autocomplete="new-password"
-                    class="pl-9"
-                    :class="errors.password ? 'border-destructive focus-visible:ring-destructive/20' : ''"
-                    @input="handleInput('password')"
-                    @blur="handleBlur('password')"
-                  />
-                </div>
-                <p v-if="errors.password" class="text-sm text-destructive">{{ errors.password }}</p>
-              </div>
-
-              <Button type="submit" :disabled="submitting" class="w-full" size="lg">
-                <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
-                {{ submitting ? 'Signing in...' : 'Sign in' }}
+            <!-- Social Login -->
+            <div class="grid grid-cols-2 gap-3">
+              <Button variant="outline" class="w-full">
+                <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+                Google
               </Button>
-            </form>
-
-            <p class="mt-6 text-center text-sm text-muted-foreground">
+              <Button variant="outline" class="w-full">
+                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+                </svg>
+                Apple
+              </Button>
+            </div>
+          </CardContent>
+          <CardFooter class="justify-center">
+            <p class="text-sm text-muted-foreground">
               Don't have an account?
               <a href="#" class="text-primary hover:text-primary/80 font-medium">Sign up</a>
             </p>
-          </CardContent>
+          </CardFooter>
         </Card>
       </div>
-    </div>
   </div>
 </template>
