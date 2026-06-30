@@ -34,6 +34,18 @@ export function useAuth() {
   }
 
   const signOut = async () => {
+    try {
+      const { data: sessionData } = await authClient.getSession()
+      const token = (sessionData as any)?.session?.token
+      if (token) {
+        await fetch('/api/auth/sign-out', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        })
+      }
+    } catch {
+      // ignore backend errors, still sign out locally
+    }
     await authClient.signOut()
     user.value = null
     window.location.href = '/login'
