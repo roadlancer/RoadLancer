@@ -20,7 +20,7 @@ build/
 auth-server/src/generated/
 
 # Playwright
-frontend/test-results/
+frontend/tests/test-results/
 frontend/playwright-report/
 frontend/blob-report/
 frontend/.auth/

@@ -1,8 +1,9 @@
 import { execSync } from "child_process";
-import * as crypto from "crypto";
 import * as dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import path from "path";
+import { scryptAsync } from "@noble/hashes/scrypt.js";
+import { randomBytes } from "crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env.test") });
@@ -25,26 +26,40 @@ function psql(sql: string, database = DB_NAME) {
   );
 }
 
-// Better Auth password hashing: scrypt N=16384, r=16, p=1, dkLen=64
-function hashPassword(password: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const salt = crypto.randomBytes(16);
-    const maxmem = 128 * 16384 * 16 * 2; // 64MB, matches Better Auth
-    crypto.scrypt(
-      Buffer.from(password.normalize("NFKC")),
-      salt,
-      64,
-      { N: 16384, r: 16, p: 1, maxmem },
-      (err, key) => {
-        if (err) return reject(err);
-        resolve(`${salt.toString("hex")}:${key.toString("hex")}`);
-      }
-    );
+function hexEncode(data: Uint8Array): string {
+  let result = "";
+  for (const byte of data) {
+    result += byte.toString(16).padStart(2, "0");
+  }
+  return result;
+}
+
+// Match Better Auth exactly: salt is hex-encoded string passed to scryptAsync
+async function hashPassword(password: string): Promise<string> {
+  const saltBytes = randomBytes(16);
+  const saltHex = hexEncode(new Uint8Array(saltBytes));
+  // Better Auth passes the hex STRING to scryptAsync (not raw bytes)
+  // scryptAsync will UTF-8 encode the hex string internally
+  const key = await scryptAsync(password.normalize("NFKC"), saltHex, {
+    N: 16384,
+    r: 16,
+    p: 1,
+    dkLen: 64,
+    maxmem: 128 * 16384 * 16 * 2,
   });
+  return `${saltHex}:${hexEncode(new Uint8Array(key))}`;
 }
 
 async function resetDatabase() {
   console.log("→ Dropping and recreating test database...");
+  try {
+    psql(
+      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${DB_NAME}' AND pid <> pg_backend_pid();`,
+      "postgres"
+    );
+  } catch {
+    // ignore if no connections
+  }
   psql(`DROP DATABASE IF EXISTS ${DB_NAME}`, "postgres");
   psql(`CREATE DATABASE ${DB_NAME}`, "postgres");
   console.log("  ✓ Database reset");
