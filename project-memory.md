@@ -14,7 +14,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Framework:** FastAPI (Python 3.12+)
 - **ORM:** Prisma (`prisma-client-py` v0.15.0)
 - **Auth:** Session-based via Bearer token → DB lookup (not JWT)
-- **Middleware:** RequestLoggingMiddleware, RateLimitMiddleware (60 req/min/IP)
+- **Middleware:** RequestLoggingMiddleware, RateLimitMiddleware (60 req/min/IP, production only)
 - **AI Pricing:** scikit-learn, numpy (bundled in same service)
 - **Port:** 8000
 
@@ -58,6 +58,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | User Roles | driver, shipper only | Admin removed for simplicity — college-level project |
 | Cache | File driver | No Redis needed for local dev |
 | Queue | Sync driver | Jobs run immediately, no worker process |
+| Rate Limiting | Production only | `NODE_ENV=production` (auth), `ENV=production` (backend) |
 | Real-time | AJAX polling (5s) | No WebSocket complexity |
 | Payments | Mock | Status fields only |
 | SMS/OTP | Mock | Displayed on screen, no Exotel |
@@ -163,7 +164,7 @@ FastAPI dependency: get_current_user()
 
 ### Backend Middleware
 - **RequestLoggingMiddleware:** Logs `METHOD /path → status (duration)` for every request
-- **RateLimitMiddleware:** 60 requests per IP per 60 seconds, returns 429 if exceeded
+- **RateLimitMiddleware:** 60 requests per IP per 60 seconds, returns 429 if exceeded — **production only** (`ENV=production`)
 - **CORSMiddleware:** Allows `http://localhost:5173` with credentials
 
 ### Environment Variables
@@ -253,11 +254,11 @@ FastAPI dependency: get_current_user()
 
 | File | Purpose |
 |------|---------|
-| `auth-server/auth.ts` | Better Auth config — trusted origins, Bearer plugin, role enum |
+| `auth-server/auth.ts` | Better Auth config — trusted origins, Bearer plugin, role enum, rate limit (production only) |
 | `auth-server/server.ts` | Hono server (port 3000) |
 | `auth-server/prisma/schema.prisma` | Auth schema — enum Role, user/session/account/verification |
 | `auth-server/seed.ts` | Database seeder — driver and shipper users |
-| `backend/app/main.py` | FastAPI app with CORS, logging, rate limit middleware |
+| `backend/app/main.py` | FastAPI app with CORS, logging, rate limit middleware (production only) |
 | `backend/app/middleware.py` | RequestLoggingMiddleware, RateLimitMiddleware |
 | `backend/app/routes/auth.py` | Session-based auth via Bearer token → DB lookup |
 | `backend/app/routes/shipments.py` | Shipment CRUD + bid routes |
@@ -279,3 +280,51 @@ FastAPI dependency: get_current_user()
 |-------|----------|----------|
 | better-auth-best-practices | `.agents/skills/better-auth-best-practices/SKILL.md` | Auth config, plugins, sessions, env vars |
 | security-review | `.agents/skills/security-review/SKILL.md` | Security audit, vulnerability scan, code review |
+
+---
+
+## 🧪 12. E2E Testing (Playwright)
+
+### Overview
+Playwright is set up with a **separate test database** (`roadlancer_test`) on the same PostgreSQL instance. The test DB is dropped, recreated, migrated, and seeded fresh before each test run.
+
+### Configuration
+| File | Purpose |
+|------|---------|
+| `frontend/playwright.config.ts` | Playwright config — Chromium only, auto-starts all 3 services with test DB |
+| `frontend/.env.test` | Test environment variables — `DATABASE_URL` points to `roadlancer_test` |
+| `frontend/tests/global-setup.ts` | Resets test DB, runs migrations, seeds users (direct DB insert with scrypt hashing) |
+| `frontend/tests/global-teardown.ts` | Truncates all test tables via psql |
+| `.gitignore` | Ignores `test-results/`, `playwright-report/`, `.auth/` |
+
+### Commands
+```bash
+cd frontend
+npm run test:setup         # Reset test DB + seed users (standalone)
+npm run test:e2e           # Run Playwright tests (headless)
+npm run test:e2e:headed    # Run tests with visible browser
+npm run test:e2e:ui        # Open Playwright UI mode
+```
+
+### Test Database
+| Property | Value |
+|----------|-------|
+| Name | `roadlancer_test` |
+| Port | 5433 |
+| Tables | `_prisma_migrations`, `user`, `account`, `session`, `verification`, `shipments`, `bids`, `verifications` |
+| Seeded users | `driver@roadlancer.com` / `driver123`, `shipper@roadlancer.com` / `shipper123` |
+
+### How It Works
+1. `global-setup.ts` drops and recreates `roadlancer_test`
+2. Runs auth-server migrations via `prisma migrate deploy` (creates `_prisma_migrations` table)
+3. Pushes backend schema via `prisma db push` (creates business tables)
+4. Seeds users via direct SQL insert with scrypt-hashed passwords (same algorithm as Better Auth)
+5. Playwright starts auth-server, FastAPI, and Vite with test DB env vars
+6. Tests run against the test DB
+7. `global-teardown.ts` truncates all tables
+
+### Key Decisions
+- **Direct DB seeding** instead of API calls — `globalSetup` runs before `webServer` starts, so auth server isn't available
+- **scrypt hashing** — matches Better Auth's password algorithm (N=16384, r=16, p=1, dkLen=64)
+- **`migrate deploy`** for auth-server — tracks migrations in `_prisma_migrations`
+- **`db push`** for backend — no migrations exist yet, just syncs schema state
