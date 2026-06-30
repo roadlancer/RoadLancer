@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from decimal import Decimal
 from app.routes.auth import get_current_user
+from app.database import db
 
 router = APIRouter()
 
@@ -60,17 +61,15 @@ def bid_to_dict(b) -> dict:
 
 @router.get("/")
 async def list_shipments(user: dict = Depends(get_current_user)):
-    from prisma import Prisma
-
-    db = Prisma()
-    await db.connect()
-    try:
+    if user["role"] == "shipper":
+        shipments = await db.shipments.find_many(
+            where={"shipperId": user["id"], "status": "active"},
+        )
+    else:
         shipments = await db.shipments.find_many(
             where={"status": "active"},
         )
-        return [shipment_to_dict(s) for s in shipments]
-    finally:
-        await db.disconnect()
+    return [shipment_to_dict(s) for s in shipments]
 
 
 @router.post("/")
@@ -78,54 +77,49 @@ async def create_shipment(
     shipment: ShipmentCreate,
     user: dict = Depends(get_current_user),
 ):
-    if user.get("role") not in ["shipper", "admin"]:
+    if user.get("role") != "shipper":
         raise HTTPException(status_code=403, detail="Only shippers can create shipments")
 
-    from prisma import Prisma
+    base_price = shipment.distance_km * 15 + shipment.weight_kg * 2
+    ai_floor_price = base_price * 0.7
+    ai_estimated_min = base_price * 0.8
+    ai_estimated_max = base_price * 1.2
 
-    db = Prisma()
-    await db.connect()
-    try:
-        base_price = shipment.distance_km * 15 + shipment.weight_kg * 2
-        ai_floor_price = base_price * 0.7
-        ai_estimated_min = base_price * 0.8
-        ai_estimated_max = base_price * 1.2
-
-        new_shipment = await db.shipments.create(
-            data={
-                "shipperId": user["id"],
-                "title": shipment.title,
-                "goodsCategory": shipment.goods_category,
-                "weightKg": Decimal(str(shipment.weight_kg)),
-                "pickupAddress": shipment.pickup_address,
-                "dropoffAddress": shipment.dropoff_address,
-                "distanceKm": Decimal(str(shipment.distance_km)),
-                "vehicleType": shipment.vehicle_type,
-                "aiFloorPrice": Decimal(str(ai_floor_price)),
-                "aiEstimatedMin": Decimal(str(ai_estimated_min)),
-                "aiEstimatedMax": Decimal(str(ai_estimated_max)),
-                "shipperBudget": Decimal(str(shipment.shipper_budget)) if shipment.shipper_budget else None,
-                "status": "active",
-            }
-        )
-        return shipment_to_dict(new_shipment)
-    finally:
-        await db.disconnect()
+    new_shipment = await db.shipments.create(
+        data={
+            "shipperId": user["id"],
+            "title": shipment.title,
+            "goodsCategory": shipment.goods_category,
+            "weightKg": Decimal(str(shipment.weight_kg)),
+            "pickupAddress": shipment.pickup_address,
+            "dropoffAddress": shipment.dropoff_address,
+            "distanceKm": Decimal(str(shipment.distance_km)),
+            "vehicleType": shipment.vehicle_type,
+            "aiFloorPrice": Decimal(str(ai_floor_price)),
+            "aiEstimatedMin": Decimal(str(ai_estimated_min)),
+            "aiEstimatedMax": Decimal(str(ai_estimated_max)),
+            "shipperBudget": Decimal(str(shipment.shipper_budget)) if shipment.shipper_budget else None,
+            "status": "active",
+        }
+    )
+    return shipment_to_dict(new_shipment)
 
 
 @router.get("/{shipment_id}")
 async def get_shipment(shipment_id: str, user: dict = Depends(get_current_user)):
-    from prisma import Prisma
+    shipment = await db.shipments.find_unique(where={"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
 
-    db = Prisma()
-    await db.connect()
-    try:
-        shipment = await db.shipments.find_unique(where={"id": shipment_id})
-        if not shipment:
-            raise HTTPException(status_code=404, detail="Shipment not found")
-        return shipment_to_dict(shipment)
-    finally:
-        await db.disconnect()
+    if user["role"] == "shipper" and shipment.shipperId != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if user["role"] == "driver" and shipment.status == "active":
+        pass
+    elif user["role"] == "driver" and shipment.assignedDriverId != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return shipment_to_dict(shipment)
 
 
 @router.post("/{shipment_id}/bids")
@@ -134,87 +128,84 @@ async def place_bid(
     bid: BidCreate,
     user: dict = Depends(get_current_user),
 ):
-    if user.get("role") not in ["driver", "admin"]:
+    if user.get("role") != "driver":
         raise HTTPException(status_code=403, detail="Only drivers can place bids")
 
-    from prisma import Prisma
+    shipment = await db.shipments.find_unique(where={"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
 
-    db = Prisma()
-    await db.connect()
-    try:
-        shipment = await db.shipments.find_unique(where={"id": shipment_id})
-        if not shipment:
-            raise HTTPException(status_code=404, detail="Shipment not found")
+    if shipment.status != "active":
+        raise HTTPException(status_code=400, detail="Shipment is not accepting bids")
 
-        if shipment.aiFloorPrice and Decimal(str(bid.amount)) < shipment.aiFloorPrice:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bid must be at least ₹{shipment.aiFloorPrice}",
-            )
-
-        new_bid = await db.bids.create(
-            data={
-                "shipmentId": shipment_id,
-                "driverId": user["id"],
-                "amount": Decimal(str(bid.amount)),
-                "message": bid.message,
-            }
+    if shipment.aiFloorPrice and Decimal(str(bid.amount)) < shipment.aiFloorPrice:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bid must be at least ₹{shipment.aiFloorPrice}",
         )
-        return bid_to_dict(new_bid)
-    finally:
-        await db.disconnect()
+
+    new_bid = await db.bids.create(
+        data={
+            "shipmentId": shipment_id,
+            "driverId": user["id"],
+            "amount": Decimal(str(bid.amount)),
+            "message": bid.message,
+        }
+    )
+    return bid_to_dict(new_bid)
 
 
 @router.get("/{shipment_id}/bids")
 async def list_bids(shipment_id: str, user: dict = Depends(get_current_user)):
-    from prisma import Prisma
+    shipment = await db.shipments.find_unique(where={"id": shipment_id})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
 
-    db = Prisma()
-    await db.connect()
-    try:
+    if user["role"] == "driver":
+        bids = await db.bids.find_many(
+            where={"shipmentId": shipment_id, "driverId": user["id"]},
+        )
+    else:
+        if shipment.shipperId != user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
         bids = await db.bids.find_many(
             where={"shipmentId": shipment_id},
         )
-        return [bid_to_dict(b) for b in bids]
-    finally:
-        await db.disconnect()
+
+    return [bid_to_dict(b) for b in bids]
 
 
 @router.put("/bids/{bid_id}/accept")
 async def accept_bid(bid_id: str, user: dict = Depends(get_current_user)):
-    from prisma import Prisma
+    bid = await db.bids.find_unique(where={"id": bid_id})
+    if not bid:
+        raise HTTPException(status_code=404, detail="Bid not found")
 
-    db = Prisma()
-    await db.connect()
-    try:
-        bid = await db.bids.find_unique(where={"id": bid_id})
-        if not bid:
-            raise HTTPException(status_code=404, detail="Bid not found")
+    shipment = await db.shipments.find_unique(where={"id": bid.shipmentId})
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
 
-        shipment = await db.shipments.find_unique(where={"id": bid.shipmentId})
-        if not shipment:
-            raise HTTPException(status_code=404, detail="Shipment not found")
+    if shipment.shipperId != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the shipper can accept bids")
 
-        if shipment.shipperId != user["id"]:
-            raise HTTPException(status_code=403, detail="Only the shipper can accept bids")
+    if shipment.status != "active":
+        raise HTTPException(status_code=400, detail="Shipment is not accepting bids")
 
-        await db.bids.update(
-            where={"id": bid_id},
-            data={"status": "accepted"},
-        )
-        await db.bids.update_many(
-            where={"shipmentId": bid.shipmentId, "id": {"not": bid_id}},
-            data={"status": "rejected"},
-        )
+    await db.bids.update(
+        where={"id": bid_id},
+        data={"status": "accepted"},
+    )
+    await db.bids.update_many(
+        where={"shipmentId": bid.shipmentId, "id": {"not": bid_id}},
+        data={"status": "rejected"},
+    )
 
-        await db.shipments.update(
-            where={"id": bid.shipmentId},
-            data={
-                "status": "assigned",
-                "assignedDriverId": bid.driverId,
-            },
-        )
+    await db.shipments.update(
+        where={"id": bid.shipmentId},
+        data={
+            "status": "assigned",
+            "assignedDriverId": bid.driverId,
+        },
+    )
 
-        return {"message": "Bid accepted", "shipment_status": "assigned"}
-    finally:
-        await db.disconnect()
+    return {"message": "Bid accepted", "shipment_status": "assigned"}

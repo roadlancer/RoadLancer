@@ -270,3 +270,12 @@ FastAPI dependency: get_current_user()
 | `frontend/src/views/HomeView.vue` | Dashboard — avatar, role badge, info cards |
 | `frontend/src/views/DriverDashboard.vue` | Driver-only page |
 | `frontend/src/views/ShipperDashboard.vue` | Shipper-only page |
+
+---
+
+## 🛡️ 11. Skills
+
+| Skill | Location | Use When |
+|-------|----------|----------|
+| better-auth-best-practices | `.agents/skills/better-auth-best-practices/SKILL.md` | Auth config, plugins, sessions, env vars |
+| security-review | `.agents/skills/security-review/SKILL.md` | Security audit, vulnerability scan, code review |

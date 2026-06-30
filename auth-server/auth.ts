@@ -20,6 +20,9 @@ export const auth = betterAuth({
   trustedOrigins: process.env.TRUSTED_ORIGINS?.split(",") || ["http://localhost:5173"],
   emailAndPassword: {
     enabled: true,
+    password: {
+      minLength: 8,
+    },
   },
   user: {
     additionalFields: {
@@ -40,6 +43,16 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // 1 day
+  },
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 10,
+  },
+  advanced: {
+    ipAddress: {
+      ipAddressHeaders: ["x-forwarded-for"],
+    },
   },
   plugins: [bearer()],
 });

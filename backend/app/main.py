@@ -4,18 +4,29 @@ load_dotenv()
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from app.routes import shipments, auth
 from app.middleware import RequestLoggingMiddleware, RateLimitMiddleware
+from app.database import connect_db, disconnect_db
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await connect_db()
+    yield
+    await disconnect_db()
+
+
 app = FastAPI(
     title="RoadLancer API",
     description="AI-Powered Transportation Management System",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Order matters: outermost middleware runs first
