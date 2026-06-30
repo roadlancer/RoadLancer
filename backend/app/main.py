@@ -30,8 +30,10 @@ app = FastAPI(
 )
 
 # Order matters: outermost middleware runs first
+import os
 app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
+if os.getenv("ENV") == "production":
+    app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
