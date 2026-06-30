@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   driver
   shipper
+  admin
 }
 
 model user {
@@ -21,8 +22,9 @@ model user {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  role   Role    @default(driver)
-  phone  String? @unique
+  role      Role    @default(driver)
+  phone     String? @unique
+  suspended Boolean @default(false)
 
   session  session[]
   account  account[]

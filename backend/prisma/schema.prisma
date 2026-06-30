@@ -10,6 +10,12 @@ datasource db {
 
 // === Auth tables (managed by Better Auth, read-only here) ===
 
+enum Role {
+  driver
+  shipper
+  admin
+}
+
 model user {
   id            String    @id
   name          String
@@ -18,8 +24,9 @@ model user {
   image         String?
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
-  role          String    @default("driver")
+  role          Role      @default(driver)
   phone         String?
+  suspended     Boolean   @default(false)
 
   session         session[]
   account         account[]

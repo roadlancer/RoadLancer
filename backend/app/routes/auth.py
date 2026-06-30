@@ -27,6 +27,9 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
+    if getattr(user, "suspended", False):
+        raise HTTPException(status_code=403, detail="Account suspended. Contact admin.")
+
     return {
         "id": user.id,
         "email": user.email,

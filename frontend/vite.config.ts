@@ -19,7 +19,15 @@ export default defineConfig({
       '/api/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
-      }
+      },
+      '/api/admin': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/shipments': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   }
 })
