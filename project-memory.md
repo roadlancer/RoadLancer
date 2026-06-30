@@ -280,51 +280,26 @@ FastAPI dependency: get_current_user()
 |-------|----------|----------|
 | better-auth-best-practices | `.agents/skills/better-auth-best-practices/SKILL.md` | Auth config, plugins, sessions, env vars |
 | security-review | `.agents/skills/security-review/SKILL.md` | Security audit, vulnerability scan, code review |
+| playwright-e2e | `.agents/skills/playwright-e2e/SKILL.md` | E2E tests, Playwright, browser tests, user flows |
 
----
+### Using playwright-e2e
 
-## 🧪 12. E2E Testing (Playwright)
+**When to use:**
+- Writing new E2E test files (`.spec.ts` in `frontend/tests/`)
+- Need login helpers, form testing patterns, or API interception examples
+- Debugging flaky tests or setting up test fixtures
 
-### Overview
-Playwright is set up with a **separate test database** (`roadlancer_test`) on the same PostgreSQL instance. The test DB is dropped, recreated, migrated, and seeded fresh before each test run.
+**How to use:**
+1. Load the skill: `skill("playwright-e2e")`
+2. Ask to write a test for a specific feature (e.g., "write a login test for driver")
+3. The skill provides file templates, selector best practices, and common patterns
+4. Test files go in `frontend/tests/*.spec.ts`
+5. Run tests with `npm run test:e2e` from `frontend/`
 
-### Configuration
-| File | Purpose |
-|------|---------|
-| `frontend/playwright.config.ts` | Playwright config — Chromium only, auto-starts all 3 services with test DB |
-| `frontend/.env.test` | Test environment variables — `DATABASE_URL` points to `roadlancer_test` |
-| `frontend/tests/global-setup.ts` | Resets test DB, runs migrations, seeds users (direct DB insert with scrypt hashing) |
-| `frontend/tests/global-teardown.ts` | Truncates all test tables via psql |
-| `.gitignore` | Ignores `test-results/`, `playwright-report/`, `.auth/` |
-
-### Commands
+**Quick commands:**
 ```bash
-cd frontend
-npm run test:setup         # Reset test DB + seed users (standalone)
-npm run test:e2e           # Run Playwright tests (headless)
-npm run test:e2e:headed    # Run tests with visible browser
-npm run test:e2e:ui        # Open Playwright UI mode
+npm run test:setup         # Reset test DB + seed users
+npm run test:e2e           # Run all tests (headless)
+npm run test:e2e:headed    # Run with visible browser
+npm run test:e2e:ui        # Open Playwright UI
 ```
-
-### Test Database
-| Property | Value |
-|----------|-------|
-| Name | `roadlancer_test` |
-| Port | 5433 |
-| Tables | `_prisma_migrations`, `user`, `account`, `session`, `verification`, `shipments`, `bids`, `verifications` |
-| Seeded users | `driver@roadlancer.com` / `driver123`, `shipper@roadlancer.com` / `shipper123` |
-
-### How It Works
-1. `global-setup.ts` drops and recreates `roadlancer_test`
-2. Runs auth-server migrations via `prisma migrate deploy` (creates `_prisma_migrations` table)
-3. Pushes backend schema via `prisma db push` (creates business tables)
-4. Seeds users via direct SQL insert with scrypt-hashed passwords (same algorithm as Better Auth)
-5. Playwright starts auth-server, FastAPI, and Vite with test DB env vars
-6. Tests run against the test DB
-7. `global-teardown.ts` truncates all tables
-
-### Key Decisions
-- **Direct DB seeding** instead of API calls — `globalSetup` runs before `webServer` starts, so auth server isn't available
-- **scrypt hashing** — matches Better Auth's password algorithm (N=16384, r=16, p=1, dkLen=64)
-- **`migrate deploy`** for auth-server — tracks migrations in `_prisma_migrations`
-- **`db push`** for backend — no migrations exist yet, just syncs schema state
