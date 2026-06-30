@@ -27,7 +27,7 @@ export const auth = betterAuth({
   user: {
     additionalFields: {
       role: {
-        type: ["driver", "shipper"],
+        type: ["driver", "shipper", "admin"],
         required: false,
         defaultValue: "driver",
         input: true,
@@ -36,6 +36,12 @@ export const auth = betterAuth({
         type: "string",
         required: false,
         unique: true,
+        input: true,
+      },
+      suspended: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
         input: true,
       },
     },

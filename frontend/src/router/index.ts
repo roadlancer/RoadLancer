@@ -3,6 +3,7 @@ import LoginView from '@/views/LoginView.vue'
 import HomeView from '@/views/HomeView.vue'
 import DriverDashboard from '@/views/DriverDashboard.vue'
 import ShipperDashboard from '@/views/ShipperDashboard.vue'
+import AdminDashboard from '@/views/AdminDashboard.vue'
 import { user, loading, fetchSession } from '@/composables/useAuth'
 
 const router = createRouter({
@@ -31,6 +32,12 @@ const router = createRouter({
       name: 'shipper',
       component: ShipperDashboard,
       meta: { requiresAuth: true, role: 'shipper' },
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: AdminDashboard,
+      meta: { requiresAuth: true, role: 'admin' },
     },
   ],
 })

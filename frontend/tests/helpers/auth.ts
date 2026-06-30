@@ -1,8 +1,9 @@
 import { Page } from "@playwright/test";
 
-type Role = "driver" | "shipper";
+type Role = "driver" | "shipper" | "admin";
 
 const credentials: Record<Role, { email: string; password: string }> = {
+  admin: { email: "admin@roadlancer.com", password: "admin123" },
   driver: { email: "driver@roadlancer.com", password: "driver123" },
   shipper: { email: "shipper@roadlancer.com", password: "shipper123" },
 };

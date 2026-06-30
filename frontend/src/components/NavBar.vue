@@ -20,8 +20,8 @@ const { user, loading, signOut } = useAuth()
 
       <!-- Center — Dashboard link (role-based) -->
       <router-link
-        v-if="!loading && user && (user.role === 'driver' || user.role === 'shipper')"
-        :to="user.role === 'driver' ? '/driver' : '/shipper'"
+        v-if="!loading && user && (user.role === 'driver' || user.role === 'shipper' || user.role === 'admin')"
+        :to="user.role === 'admin' ? '/admin' : user.role === 'driver' ? '/driver' : '/shipper'"
         class="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition"
       >
         <LayoutDashboard class="size-4" />

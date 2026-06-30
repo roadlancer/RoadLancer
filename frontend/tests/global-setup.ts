@@ -89,6 +89,7 @@ async function seedUsers() {
   console.log("→ Seeding test users...");
 
   const users = [
+    { name: "Test Admin", email: "admin@roadlancer.com", password: "admin123", role: "admin" },
     { name: "Test Driver", email: "driver@roadlancer.com", password: "driver123", role: "driver" },
     { name: "Test Shipper", email: "shipper@roadlancer.com", password: "shipper123", role: "shipper" },
   ];

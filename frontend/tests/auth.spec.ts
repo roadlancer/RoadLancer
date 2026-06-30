@@ -10,6 +10,7 @@ test.describe("Authentication", () => {
       await expect(page.getByText("Sign in to your account")).toBeVisible();
       await expect(page.getByRole("radio", { name: /driver/i })).toBeVisible();
       await expect(page.getByRole("radio", { name: /shipper/i })).toBeVisible();
+      await expect(page.getByRole("radio", { name: /admin/i })).toBeVisible();
       await expect(page.getByRole("textbox", { name: /email/i })).toBeVisible();
       await expect(page.getByRole("textbox", { name: /password/i })).toBeVisible();
       await expect(page.locator('button[type="submit"]')).toBeVisible();
@@ -57,6 +58,17 @@ test.describe("Authentication", () => {
 
       await page.waitForURL("/shipper");
       await expect(page).toHaveURL("/shipper");
+    });
+
+    test("admin logs in and redirects to /admin", async ({ page }) => {
+      await page.goto("/login");
+      await page.getByRole("radio", { name: /admin/i }).click();
+      await page.getByRole("textbox", { name: /email/i }).fill(credentials.admin.email);
+      await page.getByRole("textbox", { name: /password/i }).fill(credentials.admin.password);
+      await page.locator('button[type="submit"]').click();
+
+      await page.waitForURL("/admin");
+      await expect(page).toHaveURL("/admin");
     });
 
     test("shows loading state while submitting", async ({ page }) => {
@@ -175,6 +187,17 @@ test.describe("Authentication", () => {
       await expect(page.getByText(/invalid/i)).toBeVisible();
       await expect(page).toHaveURL("/login");
     });
+
+    test("admin credentials with driver role selected shows error", async ({ page }) => {
+      await page.goto("/login");
+      await page.getByRole("radio", { name: /driver/i }).click();
+      await page.getByRole("textbox", { name: /email/i }).fill(credentials.admin.email);
+      await page.getByRole("textbox", { name: /password/i }).fill(credentials.admin.password);
+      await page.locator('button[type="submit"]').click();
+
+      await expect(page.getByText(/invalid/i)).toBeVisible();
+      await expect(page).toHaveURL("/login");
+    });
   });
 
   test.describe("Logout", () => {
@@ -189,6 +212,14 @@ test.describe("Authentication", () => {
     test("shipper can log out and is redirected to /login", async ({ page }) => {
       await loginAs(page, "shipper");
       await expect(page).toHaveURL("/shipper");
+
+      await logout(page);
+      await expect(page).toHaveURL("/login");
+    });
+
+    test("admin can log out and is redirected to /login", async ({ page }) => {
+      await loginAs(page, "admin");
+      await expect(page).toHaveURL("/admin");
 
       await logout(page);
       await expect(page).toHaveURL("/login");
@@ -220,6 +251,14 @@ test.describe("Authentication", () => {
       await expect(page).toHaveURL("/shipper");
       await expect(page.getByText(/welcome/i)).toBeVisible();
     });
+
+    test("admin session persists after page reload", async ({ page }) => {
+      await loginAs(page, "admin");
+      await page.reload();
+
+      await expect(page).toHaveURL("/admin");
+      await expect(page.getByRole("heading", { name: /admin dashboard/i })).toBeVisible();
+    });
   });
 
   test.describe("Protected Routes", () => {
@@ -237,6 +276,12 @@ test.describe("Authentication", () => {
 
     test("unauthenticated user is redirected to /login from /shipper", async ({ page }) => {
       await page.goto("/shipper");
+      await page.waitForURL("/login");
+      await expect(page).toHaveURL("/login");
+    });
+
+    test("unauthenticated user is redirected to /login from /admin", async ({ page }) => {
+      await page.goto("/admin");
       await page.waitForURL("/login");
       await expect(page).toHaveURL("/login");
     });
@@ -259,6 +304,22 @@ test.describe("Authentication", () => {
 
     test("shipper cannot access /driver route", async ({ page }) => {
       await loginAs(page, "shipper");
+      await page.goto("/driver");
+
+      await page.waitForURL("/");
+      await expect(page).toHaveURL("/");
+    });
+
+    test("driver cannot access /admin route", async ({ page }) => {
+      await loginAs(page, "driver");
+      await page.goto("/admin");
+
+      await page.waitForURL("/");
+      await expect(page).toHaveURL("/");
+    });
+
+    test("admin cannot access /driver route", async ({ page }) => {
+      await loginAs(page, "admin");
       await page.goto("/driver");
 
       await page.waitForURL("/");
@@ -288,6 +349,12 @@ test.describe("Authentication", () => {
 
     test("shows Dashboard link for shipper", async ({ page }) => {
       await loginAs(page, "shipper");
+
+      await expect(page.getByRole("link", { name: /dashboard/i })).toBeVisible();
+    });
+
+    test("shows Dashboard link for admin", async ({ page }) => {
+      await loginAs(page, "admin");
 
       await expect(page.getByRole("link", { name: /dashboard/i })).toBeVisible();
     });

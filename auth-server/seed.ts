@@ -9,6 +9,7 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 
 const USERS = [
+  { name: "Admin User", email: "admin@roadlancer.com", password: "admin123", role: "admin" as const },
   { name: "Driver User", email: "driver@roadlancer.com", password: "driver123", role: "driver" as const },
   { name: "Shipper User", email: "shipper@roadlancer.com", password: "shipper123", role: "shipper" as const },
 ];
@@ -30,7 +31,10 @@ async function main() {
 
     const res = await fetch(`${authUrl}/api/auth/sign-up/email`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Origin": "http://localhost:5173",
+      },
       body: JSON.stringify(userData),
     });
 

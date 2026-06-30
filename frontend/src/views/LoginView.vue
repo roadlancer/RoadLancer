@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { LoaderCircle, Mail, Lock, Phone, AlertCircle, Truck } from '@lucide/vue'
+import { LoaderCircle, Mail, Lock, Phone, AlertCircle, Truck, Shield } from '@lucide/vue'
 
 const router = useRouter()
 const { fetchSession } = useAuth()
@@ -22,7 +22,7 @@ const submitError = ref('')
 const submitting = ref(false)
 const activeTab = ref('email')
 
-const form = reactive({ email: '', phone: '', password: '', role: 'driver' as 'driver' | 'shipper' })
+const form = reactive({ email: '', phone: '', password: '', role: 'driver' as 'driver' | 'shipper' | 'admin' })
 const errors = reactive({ email: '', phone: '', password: '' })
 
 const emailSchema = z.object({
@@ -86,6 +86,8 @@ async function handleSubmit() {
 
     if (actualRole === 'driver') {
       router.push('/driver')
+    } else if (actualRole === 'admin') {
+      router.push('/admin')
     } else {
       router.push('/shipper')
     }
@@ -180,7 +182,7 @@ async function handleSubmit() {
                   </div>
 
                   <!-- Role Selection -->
-                  <RadioGroup v-model="form.role" class="grid grid-cols-2 gap-3">
+                  <RadioGroup v-model="form.role" class="grid grid-cols-3 gap-3">
                     <label
                       for="role-driver-email"
                       class="flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors"
@@ -200,6 +202,15 @@ async function handleSubmit() {
                         <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
                       </svg>
                       <span class="text-sm font-medium">Shipper</span>
+                    </label>
+                    <label
+                      for="role-admin-email"
+                      class="flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors"
+                      :class="form.role === 'admin' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'"
+                    >
+                      <RadioGroupItem value="admin" id="role-admin-email" />
+                      <Shield class="size-4" />
+                      <span class="text-sm font-medium">Admin</span>
                     </label>
                   </RadioGroup>
 
@@ -264,7 +275,7 @@ async function handleSubmit() {
                   </div>
 
                   <!-- Role Selection -->
-                  <RadioGroup v-model="form.role" class="grid grid-cols-2 gap-3">
+                  <RadioGroup v-model="form.role" class="grid grid-cols-3 gap-3">
                     <label
                       for="role-driver-phone"
                       class="flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors"
@@ -284,6 +295,15 @@ async function handleSubmit() {
                         <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
                       </svg>
                       <span class="text-sm font-medium">Shipper</span>
+                    </label>
+                    <label
+                      for="role-admin-phone"
+                      class="flex items-center justify-center gap-2 rounded-lg border p-3 cursor-pointer transition-colors"
+                      :class="form.role === 'admin' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'"
+                    >
+                      <RadioGroupItem value="admin" id="role-admin-phone" />
+                      <Shield class="size-4" />
+                      <span class="text-sm font-medium">Admin</span>
                     </label>
                   </RadioGroup>
 
