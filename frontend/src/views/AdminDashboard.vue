@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { authClient } from '@/lib/auth-client'
+import { useAdminUsers } from '@/composables/useAdminUsers'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,36 +13,26 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
-import {   LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
+import { LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()
 
-interface UserRecord {
-  id: string
-  name: string
-  email: string
-  role: string
-  phone: string | null
-  suspended: boolean
-  status: string
-  created_at: string | null
-}
+const {
+  data: users,
+  isLoading: loadingUsers,
+  error,
+  searchQuery,
+  activeTab,
+  pendingCount,
+  rejectedCount,
+  suspendMutation,
+  refetchAll,
+} = useAdminUsers()
 
-const users = ref<UserRecord[]>([])
-const loadingUsers = ref(false)
-const searchQuery = ref('')
-const activeTab = ref('all')
-const actionLoading = ref<string | null>(null)
-const error = ref('')
-const pendingVerifications = ref(0)
-const rejectedVerifications = ref(0)
-
-// Suspend dialog state
 const suspendDialogOpen = ref(false)
-const suspendTarget = ref<UserRecord | null>(null)
+const suspendTarget = ref<any>(null)
 const suspendReason = ref('')
-const suspendLoading = ref(false)
 
 const driverReasons = [
   'Repeated late deliveries',
@@ -75,13 +65,13 @@ const suspendReasons = computed(() => {
 })
 
 const filteredUsers = computed(() => {
-  let result = users.value
+  let result = users.value ?? []
   if (activeTab.value !== 'all') {
-    result = result.filter(u => u.role === activeTab.value)
+    result = result.filter((u: any) => u.role === activeTab.value)
   }
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
-    result = result.filter(u =>
+    result = result.filter((u: any) =>
       u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
     )
   }
@@ -89,142 +79,33 @@ const filteredUsers = computed(() => {
 })
 
 const stats = computed(() => ({
-  total: users.value.length,
-  drivers: users.value.filter(u => u.role === 'driver').length,
-  shippers: users.value.filter(u => u.role === 'shipper').length,
-  admins: users.value.filter(u => u.role === 'admin').length,
-  suspended: users.value.filter(u => u.suspended).length,
+  total: users.value?.length ?? 0,
+  drivers: users.value?.filter((u: any) => u.role === 'driver').length ?? 0,
+  shippers: users.value?.filter((u: any) => u.role === 'shipper').length ?? 0,
+  admins: users.value?.filter((u: any) => u.role === 'admin').length ?? 0,
+  suspended: users.value?.filter((u: any) => u.suspended).length ?? 0,
 }))
 
-async function getSessionToken(): Promise<string | null> {
-  try {
-    const { data: sessionData } = await authClient.getSession()
-    return (sessionData as any)?.session?.token ?? null
-  } catch {
-    return null
-  }
-}
-
-async function fetchUsers() {
-  loadingUsers.value = true
-  error.value = ''
-  try {
-    const token = await getSessionToken()
-    if (!token) {
-      router.push('/login')
-      return
-    }
-    const params = new URLSearchParams()
-    if (activeTab.value !== 'all') params.set('role', activeTab.value)
-    if (searchQuery.value) params.set('search', searchQuery.value)
-
-    const res = await fetch(`/api/admin/users?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail || 'Failed to fetch users')
-    }
-    users.value = await res.json()
-
-    const vRes = await fetch('/api/verification/admin/count', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (vRes.ok) {
-      const vData = await vRes.json()
-      pendingVerifications.value = vData.count
-    }
-
-    const rRes = await fetch('/api/verification/admin/count?status=rejected', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (rRes.ok) {
-      const rData = await rRes.json()
-      rejectedVerifications.value = rData.count
-    }
-  } catch (e: any) {
-    error.value = e.message || 'Failed to load users'
-  } finally {
-    loadingUsers.value = false
-  }
-}
-
-function openSuspendDialog(u: UserRecord) {
+function openSuspendDialog(u: any) {
   suspendTarget.value = u
   suspendReason.value = ''
   suspendDialogOpen.value = true
 }
 
-async function confirmSuspend() {
+function confirmSuspend() {
   if (!suspendTarget.value || !suspendReason.value) return
-  suspendLoading.value = true
-  error.value = ''
-  try {
-    const token = await getSessionToken()
-    if (!token) {
-      router.push('/login')
-      return
-    }
-    const res = await fetch(`/api/admin/users/${suspendTarget.value.id}/suspend`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ suspended: true }),
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail || 'Failed to suspend user')
-    }
-    const updated = await res.json()
-    const idx = users.value.findIndex(u => u.id === suspendTarget.value!.id)
-    if (idx !== -1) users.value[idx] = updated
-    suspendDialogOpen.value = false
-  } catch (e: any) {
-    error.value = e.message || 'Failed to suspend user'
-  } finally {
-    suspendLoading.value = false
-  }
+  suspendMutation.mutate(
+    { userId: suspendTarget.value.id, suspended: true },
+    { onSuccess: () => { suspendDialogOpen.value = false } },
+  )
 }
 
-async function unsuspendUser(userId: string) {
-  actionLoading.value = userId
-  error.value = ''
-  try {
-    const token = await getSessionToken()
-    if (!token) {
-      router.push('/login')
-      return
-    }
-    const res = await fetch(`/api/admin/users/${userId}/suspend`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ suspended: false }),
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail || 'Failed to unsuspend user')
-    }
-    const updated = await res.json()
-    const idx = users.value.findIndex(u => u.id === userId)
-    if (idx !== -1) users.value[idx] = updated
-  } catch (e: any) {
-    error.value = e.message || 'Failed to unsuspend user'
-  } finally {
-    actionLoading.value = null
-  }
+function unsuspendUser(userId: string) {
+  suspendMutation.mutate({ userId, suspended: false })
 }
 
-onMounted(() => {
-  if (!loading.value && (!user.value || user.value.role !== 'admin')) {
-    router.replace('/login')
-  } else {
-    fetchUsers()
-  }
+watch([user, loading], ([u, l]) => {
+  if (!l && (!u || u.role !== 'admin')) router.replace('/login')
 })
 </script>
 
@@ -236,13 +117,11 @@ onMounted(() => {
     </div>
 
     <div v-else-if="user && user.role === 'admin'" class="max-w-6xl mx-auto">
-      <!-- Header -->
       <div class="mb-8">
         <h1 class="text-3xl font-bold text-foreground mb-2">Admin Dashboard</h1>
         <p class="text-muted-foreground">Manage drivers, shippers, and platform users</p>
       </div>
 
-      <!-- Stats -->
       <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-8">
         <Card>
           <CardContent class="pt-6">
@@ -304,7 +183,7 @@ onMounted(() => {
                   <Clock class="size-5 text-orange-600" />
                 </div>
                 <div>
-                  <p class="text-2xl font-bold">{{ pendingVerifications }}</p>
+                  <p class="text-2xl font-bold">{{ pendingCount.data.value ?? 0 }}</p>
                   <p class="text-xs text-muted-foreground">Pending</p>
                 </div>
               </div>
@@ -319,7 +198,7 @@ onMounted(() => {
                   <XCircle class="size-5 text-red-600" />
                 </div>
                 <div>
-                  <p class="text-2xl font-bold">{{ rejectedVerifications }}</p>
+                  <p class="text-2xl font-bold">{{ rejectedCount.data.value ?? 0 }}</p>
                   <p class="text-xs text-muted-foreground">Rejected</p>
                 </div>
               </div>
@@ -341,13 +220,11 @@ onMounted(() => {
         </Card>
       </div>
 
-      <!-- Error -->
       <Alert v-if="error" variant="destructive" class="mb-6">
         <AlertCircle class="h-4 w-4" />
-        <AlertDescription>{{ error }}</AlertDescription>
+        <AlertDescription>{{ error.message }}</AlertDescription>
       </Alert>
 
-      <!-- User Table -->
       <Card>
         <CardHeader>
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -359,16 +236,15 @@ onMounted(() => {
                   v-model="searchQuery"
                   placeholder="Search users..."
                   class="pl-9 w-64"
-                  @input="fetchUsers"
                 />
               </div>
-              <Button variant="outline" size="sm" @click="fetchUsers" :disabled="loadingUsers">
+              <Button variant="outline" size="sm" @click="refetchAll" :disabled="loadingUsers">
                 <LoaderCircle v-if="loadingUsers" class="size-4 animate-spin" />
                 Refresh
               </Button>
             </div>
           </div>
-          <Tabs v-model="activeTab" class="w-full" @update:model-value="fetchUsers">
+          <Tabs v-model="activeTab" class="w-full">
             <TabsList class="grid w-full grid-cols-4">
               <TabsTrigger value="all">All</TabsTrigger>
               <TabsTrigger value="driver">Drivers</TabsTrigger>
@@ -435,10 +311,10 @@ onMounted(() => {
                       v-else-if="u.role !== 'admin' && u.suspended"
                       variant="outline"
                       size="sm"
-                      :disabled="actionLoading === u.id"
+                      :disabled="suspendMutation.isPending.value"
                       @click="unsuspendUser(u.id)"
                     >
-                      <LoaderCircle v-if="actionLoading === u.id" class="size-3 animate-spin mr-1" />
+                      <LoaderCircle v-if="suspendMutation.isPending.value" class="size-3 animate-spin mr-1" />
                       Unsuspend
                     </Button>
                   </td>
@@ -449,7 +325,6 @@ onMounted(() => {
         </CardContent>
       </Card>
 
-      <!-- Suspend Dialog -->
       <Dialog v-model:open="suspendDialogOpen">
         <DialogContent class="sm:max-w-md">
           <DialogHeader>
@@ -483,11 +358,11 @@ onMounted(() => {
             <Button variant="outline" @click="suspendDialogOpen = false">Cancel</Button>
             <Button
               variant="destructive"
-              :disabled="!suspendReason || suspendLoading"
+              :disabled="!suspendReason || suspendMutation.isPending.value"
               @click="confirmSuspend"
             >
-              <LoaderCircle v-if="suspendLoading" class="size-4 animate-spin mr-1" />
-              {{ suspendLoading ? 'Suspending...' : 'Confirm Suspension' }}
+              <LoaderCircle v-if="suspendMutation.isPending.value" class="size-4 animate-spin mr-1" />
+              {{ suspendMutation.isPending.value ? 'Suspending...' : 'Confirm Suspension' }}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,48 +1,17 @@
 <script lang="ts" setup>
-import { ref, onMounted, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
-import { authClient } from '@/lib/auth-client'
+import { useVerificationStatus } from '@/composables/useVerificationStatus'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Truck, LayoutDashboard, LogOut, ShieldCheck } from '@lucide/vue'
 
 const { user, loading, signOut } = useAuth()
-const isVerified = ref<boolean | null>(null)
-
-async function checkVerification() {
-  if (!user.value || user.value.role === 'admin') {
-    isVerified.value = null
-    return
-  }
-  try {
-    const session = await authClient.getSession()
-    const token = (session.data as any)?.session?.token
-    if (!token) return
-
-    const res = await fetch('/api/verification/status', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = await res.json()
-    isVerified.value = data.status === 'approved'
-  } catch {
-    isVerified.value = false
-  }
-}
-
-onMounted(() => {
-  if (user.value) checkVerification()
-})
-
-watch(user, (u) => {
-  if (u) checkVerification()
-  else isVerified.value = null
-})
+const { isVerified } = useVerificationStatus()
 </script>
 
 <template>
   <nav class="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-gray-200 px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between h-16 items-center">
-      <!-- Logo -->
       <router-link to="/" class="flex items-center gap-2.5">
         <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
           <Truck class="size-4 text-primary-foreground" />
@@ -50,7 +19,6 @@ watch(user, (u) => {
         <span class="text-lg font-bold text-foreground hidden sm:block">RoadLancer</span>
       </router-link>
 
-      <!-- Center — Dashboard link (role-based) -->
       <router-link
         v-if="!loading && user && (user.role === 'driver' || user.role === 'shipper' || user.role === 'admin')"
         :to="user.role === 'admin' ? '/admin' : user.role === 'driver' ? '/driver' : '/shipper'"
@@ -60,9 +28,7 @@ watch(user, (u) => {
         <span class="hidden sm:inline">Dashboard</span>
       </router-link>
 
-      <!-- Right side — User info -->
       <div v-if="!loading && user" class="flex items-center gap-3">
-        <!-- Get Validated button (drivers & shippers who are not verified) -->
         <router-link
           v-if="(user.role === 'driver' || user.role === 'shipper') && isVerified === false"
           :to="user.role === 'driver' ? '/get-validated' : '/get-validated-shipper'"
@@ -87,14 +53,12 @@ watch(user, (u) => {
         </Button>
       </div>
 
-      <!-- Loading state -->
       <div v-else-if="loading" class="flex items-center gap-3">
         <Avatar>
           <AvatarFallback class="animate-pulse" />
         </Avatar>
       </div>
 
-      <!-- Not logged in -->
       <router-link v-else to="/login">
         <Button size="sm">Sign in</Button>
       </router-link>

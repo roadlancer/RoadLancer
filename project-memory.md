@@ -16,6 +16,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Auth:** Session-based via Bearer token → DB lookup (not JWT)
 - **Middleware:** RequestLoggingMiddleware, RateLimitMiddleware (60 req/min/IP, production only)
 - **AI Pricing:** scikit-learn, numpy (bundled in same service)
+- **Routes:** `/api/auth` (FastAPI), `/api/admin/*`, `/api/verification/*`, `/api/shipments/*`
 - **Port:** 8000
 
 ### Auth Server (Better Auth)
@@ -35,7 +36,10 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Theme:** Teal (primary: `oklch(0.511 0.096 186.391)`)
 - **Form Validation:** Zod v4 + manual `safeParse()` (no vuehookform)
 - **Auth Client:** `better-auth` vanilla client (`baseURL: ''` for Vite proxy)
+- **HTTP Client:** Axios (`@/lib/api.ts`) — centralized instance with Bearer token interceptor
+- **Data Fetching:** TanStack Query (`@tanstack/vue-query`) — automatic caching, refetching, mutations
 - **Router:** Vue Router with auth navigation guards
+- **Composables:** `useAuth()`, `useVerificationStatus()`, `useAdminUsers()`, `usePendingUsers()`, `useVerificationList()`
 - **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup
 - **Layout:** Sticky NavBar, Footer, centered login card with role selection
 - **Port:** 5173
@@ -55,7 +59,9 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Theme | Teal | Blue-green accent for transportation/logistics branding |
 | Form Validation | Zod + manual | `@vuehookform/core` incompatible with Zod v4 runtime |
 | Auth Client | `better-auth` vanilla | `@better-auth/vue` removed; singleton composable pattern |
-| User Roles | driver, shipper only | Admin removed for simplicity — college-level project |
+| HTTP Client | Axios | Centralized instance with Bearer token interceptor (`@/lib/api.ts`) |
+| Data Fetching | TanStack Query (`@tanstack/vue-query`) | Automatic caching, refetching, and mutation support via composable hooks |
+| User Roles | admin, driver, shipper | Three roles for full feature set |
 | Cache | File driver | No Redis needed for local dev |
 | Queue | Sync driver | Jobs run immediately, no worker process |
 | Rate Limiting | Production only | `NODE_ENV=production` (auth), `ENV=production` (backend) |
@@ -75,8 +81,15 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 2 | Better Auth Server Setup | ✅ Complete |
 | Phase 3 | FastAPI Backend Setup | ✅ Complete |
 | Phase 4 | Vue.js Frontend Setup (Login, NavBar, Home, Footer) | ✅ Complete |
+| Phase 4.5 | Admin Dashboard, Verification Flow, TanStack Query | ✅ Complete |
 | Phase 5 | Core Features (shipments, bids, verification) | ⬜ Not Started |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
+
+### E2E Test Status
+- **Total tests:** 49
+- **Passing:** 49
+- **Flaky:** 0
+- **Coverage:** Login flow, role validation, session management, admin dashboard, verification flow
 
 ---
 
@@ -90,12 +103,12 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 
 ## 🔌 5. Service Ports
 
-| Service | Port | URL |
-|---------|------|-----|
-| Vue.js Frontend | 5173 | http://localhost:5173 |
-| Better Auth Server | 3000 | http://localhost:3000 |
-| FastAPI Backend | 8000 | http://localhost:8000 |
-| PostgreSQL | 5433 | localhost:5433 |
+| Service | Port | URL | API Routes |
+|---------|------|-----|------------|
+| Vue.js Frontend | 5173 | http://localhost:5173 | — |
+| Better Auth Server | 3000 | http://localhost:3000 | `/api/auth/*` |
+| FastAPI Backend | 8000 | http://localhost:8000 | `/api/admin/*`, `/api/verification/*`, `/api/shipments/*` |
+| PostgreSQL | 5433 | localhost:5433 | — |
 
 ---
 
@@ -135,17 +148,25 @@ FastAPI dependency: get_current_user()
 ### Database Schema (Auth Tables)
 | Table | Purpose |
 |-------|---------|
-| `user` | id, name, email, emailVerified, image, role (enum), phone |
+| `user` | id, name, email, emailVerified, image, role (enum), phone, suspended (bool), status (enum: pending/approved/rejected) |
 | `session` | id, token (unique), expiresAt, userId, ipAddress, userAgent |
 | `account` | OAuth provider accounts (not used for email/password) |
 | `verification` | Email verification tokens |
 
+### Database Schema (Business Tables — FastAPI)
+| Table | Purpose |
+|-------|---------|
+| `shipments` | id, title, description, origin, destination, weight, status, shipperId, createdAt, updatedAt |
+| `bids` | id, amount, shipmentId, driverId, status, createdAt, updatedAt |
+| `user_verifications` | id, userId (unique), driver fields (nullable), shipper fields (nullable), status (enum: pending/approved/rejected), reviewedBy, reviewedAt, rejectionReason, timestamps |
+
 ### Role System
-- **Enum:** `driver` | `shipper` (admin removed for simplicity)
+- **Enum:** `admin` | `driver` | `shipper`
 - **Default:** `driver`
-- **Stored as:** Prisma enum in DB, string array in Better Auth config (`type: ["driver", "shipper"]`)
+- **Stored as:** Prisma enum in DB, string array in Better Auth config (`type: ["admin", "driver", "shipper"]`)
 - **Access:** `user.role` available in frontend after `fetchSession()`
 - **Login:** User selects role via radio buttons before signing in
+- **Admin access:** `admin@roadlancer.com` → `/admin` dashboard with user management
 
 ### Frontend Auth Implementation
 - **Client:** `better-auth/vue` `createAuthClient({ baseURL: '' })` — empty baseURL for Vite proxy
@@ -155,17 +176,120 @@ FastAPI dependency: get_current_user()
   - `meta.guest` → redirects to `/` if already authenticated
   - `meta.role` → redirects to `/` if user role doesn't match
 - **Login:** Role radio buttons → `signIn.email()` → `fetchSession()` → validates `user.role` against selected role → `router.push('/driver'|'/shipper')` → if mismatch: generic error + sign out
-- **Sign out:** `authClient.signOut()` → clears user → `window.location.href = '/login'`
+- **Sign out:** `useAuth().signOut()` → `api.post('/auth/sign-out')` → clears user → `window.location.href = '/login'`
+- **Verification check:** NavBar + dashboards use `useVerificationStatus()` composable — shows "Get Validated" button if not verified
+
+### HTTP Client (Axios)
+- **Instance:** `@/lib/api.ts` — centralized axios instance with Bearer token interceptor
+- **Token injection:** Reads token from `authClient.getSession()`, adds `Authorization: Bearer <token>` header to every request
+- **401 handling:** Redirects to `/login` on 401 response — **except** if already on `/login` (prevents redirect loop during role-mismatch sign-out)
+- **All API calls** must use `api` from `@/lib/api.ts` instead of raw `fetch()` or `axios.create()`
+
+### Data Fetching (TanStack Query)
+- **Package:** `@tanstack/vue-query` (v5)
+- **Plugin:** `VueQueryPlugin` added to `main.ts`
+- **Pattern:** Composable hooks encapsulate query key, query function, enabled condition, and mutations
+- **Shared queries:** Single composable can be used across multiple components (e.g., `useVerificationStatus()` shared by NavBar, DriverDashboard, ShipperDashboard, GetValidated)
+- **Automatic invalidation:** Mutations (create, update, delete) invalidate related queries via `queryClient.invalidateQueries()`
+- **Composable files:** All in `src/composables/` — `useVerificationStatus.ts`, `useAdminUsers.ts`, `usePendingUsers.ts`, `useVerificationList.ts`
+- **When to use:**
+  - Any `GET` request → `useQuery()`
+  - Any `POST`/`PUT`/`DELETE` request → `useMutation()` + `queryClient.invalidateQueries()`
+  - Shared state across components → single composable, not duplicated queries
 
 ### Backend Auth Implementation
 - **Dependency:** `get_current_user(authorization: Header)` — extracts Bearer token
 - **Verification:** DB lookup on `session` table → expiry check → user lookup
 - **Protected routes:** `user: dict = Depends(get_current_user)` in FastAPI
+- **Admin dependency:** `get_admin_user` — checks `user["role"] == "admin"`, `user["suspended"] == False`, `user["status"] == "approved"`
+- **Status check:** `get_current_user` returns 403 for `suspended=True` or `status != "approved"`
+- **Verification status:** `user_verifications` table tracks driver/shipper profile verification
 
 ### Backend Middleware
 - **RequestLoggingMiddleware:** Logs `METHOD /path → status (duration)` for every request
 - **RateLimitMiddleware:** 60 requests per IP per 60 seconds, returns 429 if exceeded — **production only** (`ENV=production`)
 - **CORSMiddleware:** Allows `http://localhost:5173` with credentials
+
+### Backend Routes
+- **`/api/auth`** — Better Auth server (Node.js on port 3000)
+- **`/api/admin/*`** — Admin user management (list, suspend, approve, reject)
+  - `GET /api/admin/users` — list all users (with search, role filter, status filter)
+  - `GET /api/admin/users/pending/list` — list pending users
+  - `GET /api/admin/users/pending/count` — count pending users
+  - `GET /api/admin/users/rejected/count` — count rejected users
+  - `POST /api/admin/users/{id}/suspend` — suspend a user (with reason)
+  - `POST /api/admin/users/{id}/unsuspend` — unsuspend a user
+  - `POST /api/admin/users/{id}/approve` — approve a pending user
+  - `POST /api/admin/users/{id}/reject` — reject a pending user (with reason)
+- **`/api/verification/*`** — Verification submit (driver/shipper), status, admin review
+  - `GET /api/verification/status` — get current user's verification status
+  - `POST /api/verification/submit/driver` — submit driver verification details
+  - `POST /api/verification/submit/shipper` — submit shipper verification details
+  - `GET /api/verification/admin/list` — list all verification submissions (admin, with status filter + search)
+  - `GET /api/verification/admin/count` — count verifications by status (admin, defaults to pending)
+  - `POST /api/verification/admin/{id}/approve` — approve a verification (admin)
+  - `POST /api/verification/admin/{id}/reject` — reject a verification (admin, with optional reason)
+- **`/api/shipments/*`** — Shipment CRUD + bid routes (IDOR-protected)
+
+### Frontend Composables
+- **`useAuth()`** — Singleton auth state (user, loading, fetchSession, signOut)
+- **`useVerificationStatus()`** — TanStack Query for verification status + submit mutation (shared by NavBar, DriverDashboard, ShipperDashboard, GetValidated)
+- **`useAdminUsers()`** — TanStack Query for admin user list + suspend mutation (shared by AdminDashboard)
+- **`usePendingUsers()`** — TanStack Query for pending users + approve/reject mutations (shared by PendingUsers)
+- **`useVerificationList()`** — TanStack Query for admin verification list + approve/reject mutations (shared by AdminVerificationReview)
+
+### TanStack Query Composable Pattern
+```typescript
+// Example: useVerificationStatus.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
+import { computed } from 'vue'
+import { api } from '@/lib/api'
+import { useAuth } from './useAuth'
+
+export function useVerificationStatus() {
+  const { user } = useAuth()
+  const queryClient = useQueryClient()
+
+  const queryKey = computed(() => ['verification-status', user.value?.id])
+
+  const query = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const { data } = await api.get('/verification/status')
+      return data
+    },
+    enabled: computed(() => !!user.value && user.value.role !== 'admin'),
+    staleTime: 30_000,
+  })
+
+  const submitMutation = useMutation({
+    mutationFn: async (payload: { type: 'driver' | 'shipper'; data: any }) => {
+      const { data } = await api.post(`/verification/submit/${payload.type}`, payload.data)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['verification-status'] })
+    },
+  })
+
+  const isVerified = computed(() => query.data.value?.verified === true)
+  const verificationData = computed(() => query.data.value?.verification)
+
+  return {
+    // Query state
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    // Data
+    isVerified,
+    verificationData,
+    // Mutations
+    submitVerification: submitMutation.mutate,
+    isSubmitting: submitMutation.isPending,
+    submitError: submitMutation.error,
+  }
+}
+```
 
 ### Environment Variables
 | Variable | Location | Value |
@@ -174,6 +298,16 @@ FastAPI dependency: get_current_user()
 | `BETTER_AUTH_SECRET` | `.env` (root) | Random secret for session signing |
 | `BETTER_AUTH_URL` | `.env` (auth-server) | `http://localhost:3000` |
 | `TRUSTED_ORIGINS` | `.env` (root) | `http://localhost:5173` |
+| `ENV` | `.env` (backend) | `production` to enable rate limiting |
+
+### Vite Proxy Configuration
+| Route | Target | Notes |
+|-------|--------|-------|
+| `/api/auth` | `http://localhost:3000` | Better Auth server |
+| `/api/admin` | `http://localhost:8000` | FastAPI admin routes |
+| `/api/shipments` | `http://localhost:8000` | FastAPI shipment routes |
+| `/api/verification` | `http://localhost:8000` | FastAPI verification routes |
+| `/api/me` | `http://localhost:8000` | FastAPI user info |
 
 ### Session Configuration
 - **Expiry:** 7 days (`60 * 60 * 24 * 7`)
@@ -218,6 +352,11 @@ FastAPI dependency: get_current_user()
 | `/login` | LoginView | Guest only |
 | `/driver` | DriverDashboard | Driver only |
 | `/shipper` | ShipperDashboard | Shipper only |
+| `/get-validated` | GetValidated | Driver only |
+| `/get-validated-shipper` | GetValidated | Shipper only |
+| `/admin` | AdminDashboard | Admin only |
+| `/admin/pending` | PendingUsers | Admin only |
+| `/admin/verifications` | AdminVerificationReview | Admin only |
 
 ---
 
@@ -225,10 +364,11 @@ FastAPI dependency: get_current_user()
 
 | Role | Email | Password |
 |------|-------|----------|
+| Admin | admin@roadlancer.com | admin123 |
 | Driver | driver@roadlancer.com | driver123 |
 | Shipper | shipper@roadlancer.com | shipper123 |
 
-> **Note:** Only these two accounts should exist. Old admin/test users must be deleted from DB if found.
+> **Note:** These three accounts are seeded via `auth-server/seed.ts`. All have `status=approved` by default. Old test users must be deleted from DB if found.
 
 ---
 
@@ -247,6 +387,7 @@ FastAPI dependency: get_current_user()
 - **Login role validation:** After `fetchSession()`, compare `user.role` with selected role — mismatch shows generic "Invalid credentials" error (never reveals actual role for security)
 - **Old admin user:** If old admin user exists with role `driver`, login succeeds with driver radio button — delete stale users from DB
 - **Seed users must have passwords:** Users created via Prisma directly have no password hash — always register via `/api/auth/sign-up/email` endpoint
+- **401 interceptor login page:** Must check `window.location.pathname !== '/login'` before redirecting — prevents redirect loop when role-mismatch sign-out triggers a 401 during verification query
 
 ---
 
@@ -261,10 +402,17 @@ FastAPI dependency: get_current_user()
 | `backend/app/main.py` | FastAPI app with CORS, logging, rate limit middleware (production only) |
 | `backend/app/middleware.py` | RequestLoggingMiddleware, RateLimitMiddleware |
 | `backend/app/routes/auth.py` | Session-based auth via Bearer token → DB lookup |
+| `backend/app/routes/admin.py` | Admin user management — list/suspend/approve/reject |
+| `backend/app/routes/verification.py` | Verification submit (driver/shipper), status, admin review |
 | `backend/app/routes/shipments.py` | Shipment CRUD + bid routes |
 | `frontend/src/style.css` | Tailwind v4 + shadcn teal theme + autofill overrides |
 | `frontend/src/router/index.ts` | Vue Router with auth + role navigation guards |
 | `frontend/src/composables/useAuth.ts` | Singleton composable — exports `user`, `loading`, `fetchSession` |
+| `frontend/src/composables/useVerificationStatus.ts` | TanStack Query composable — shared verification status check + submit mutation |
+| `frontend/src/composables/useAdminUsers.ts` | TanStack Query composable — admin user list, suspend, pending/rejected counts |
+| `frontend/src/composables/usePendingUsers.ts` | TanStack Query composable — pending user list, approve/reject mutations |
+| `frontend/src/composables/useVerificationList.ts` | TanStack Query composable — admin verification list, approve/reject mutations |
+| `frontend/src/lib/api.ts` | Axios instance with Bearer token interceptor and 401 redirect |
 | `frontend/src/components/NavBar.vue` | Sticky nav — role dashboard link, sign out |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
 | `frontend/src/views/LoginView.vue` | Role radio buttons, tabs, social login, Zod validation |
@@ -281,6 +429,7 @@ FastAPI dependency: get_current_user()
 | better-auth-best-practices | `.agents/skills/better-auth-best-practices/SKILL.md` | Auth config, plugins, sessions, env vars |
 | security-review | `.agents/skills/security-review/SKILL.md` | Security audit, vulnerability scan, code review |
 | playwright-e2e | `.agents/skills/playwright-e2e/SKILL.md` | E2E tests, Playwright, browser tests, user flows |
+| opencode customize | `<built-in>` | Editing opencode config, agents, skills, plugins |
 
 ### Using playwright-e2e
 
