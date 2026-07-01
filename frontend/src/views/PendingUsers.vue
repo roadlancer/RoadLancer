@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { authClient } from '@/lib/auth-client'
+import { usePendingUsers } from '@/composables/usePendingUsers'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,28 +17,18 @@ import { LoaderCircle, Clock, Search, AlertCircle, CheckCircle, XCircle, ArrowLe
 const router = useRouter()
 const { user, loading } = useAuth()
 
-interface UserRecord {
-  id: string
-  name: string
-  email: string
-  role: string
-  phone: string | null
-  suspended: boolean
-  status: string
-  created_at: string | null
-}
+const {
+  data: users,
+  isLoading: loadingUsers,
+  error,
+  searchQuery,
+  approveMutation,
+  rejectMutation,
+} = usePendingUsers()
 
-const users = ref<UserRecord[]>([])
-const loadingUsers = ref(false)
-const searchQuery = ref('')
-const actionLoading = ref<string | null>(null)
-const error = ref('')
-
-// Reject dialog state
 const rejectDialogOpen = ref(false)
-const rejectTarget = ref<UserRecord | null>(null)
+const rejectTarget = ref<any>(null)
 const rejectReason = ref('')
-const rejectLoading = ref(false)
 
 const rejectReasons = [
   'Incomplete or missing registration information',
@@ -51,117 +41,33 @@ const rejectReasons = [
 ]
 
 const filteredUsers = computed(() => {
-  if (!searchQuery.value) return users.value
+  if (!searchQuery.value) return users.value ?? []
   const q = searchQuery.value.toLowerCase()
-  return users.value.filter(u =>
+  return (users.value ?? []).filter((u: any) =>
     u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
   )
 })
 
-async function getSessionToken(): Promise<string | null> {
-  try {
-    const { data: sessionData } = await authClient.getSession()
-    return (sessionData as any)?.session?.token ?? null
-  } catch {
-    return null
-  }
+function approveUser(userId: string) {
+  approveMutation.mutate(userId)
 }
 
-async function fetchPendingUsers() {
-  loadingUsers.value = true
-  error.value = ''
-  try {
-    const token = await getSessionToken()
-    if (!token) {
-      router.push('/login')
-      return
-    }
-    const params = new URLSearchParams()
-    if (searchQuery.value) params.set('search', searchQuery.value)
-
-    const res = await fetch(`/api/admin/users/pending/list?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail || 'Failed to fetch pending users')
-    }
-    users.value = await res.json()
-  } catch (e: any) {
-    error.value = e.message || 'Failed to load pending users'
-  } finally {
-    loadingUsers.value = false
-  }
-}
-
-async function approveUser(userId: string) {
-  actionLoading.value = userId
-  error.value = ''
-  try {
-    const token = await getSessionToken()
-    if (!token) {
-      router.push('/login')
-      return
-    }
-    const res = await fetch(`/api/admin/users/${userId}/approve`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail || 'Failed to approve user')
-    }
-    users.value = users.value.filter(u => u.id !== userId)
-  } catch (e: any) {
-    error.value = e.message || 'Failed to approve user'
-  } finally {
-    actionLoading.value = null
-  }
-}
-
-function openRejectDialog(u: UserRecord) {
+function openRejectDialog(u: any) {
   rejectTarget.value = u
   rejectReason.value = ''
   rejectDialogOpen.value = true
 }
 
-async function confirmReject() {
+function confirmReject() {
   if (!rejectTarget.value || !rejectReason.value) return
-  rejectLoading.value = true
-  error.value = ''
-  try {
-    const token = await getSessionToken()
-    if (!token) {
-      router.push('/login')
-      return
-    }
-    const res = await fetch(`/api/admin/users/${rejectTarget.value.id}/reject`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ reason: rejectReason.value }),
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail || 'Failed to reject user')
-    }
-    users.value = users.value.filter(u => u.id !== rejectTarget.value!.id)
-    rejectDialogOpen.value = false
-  } catch (e: any) {
-    error.value = e.message || 'Failed to reject user'
-  } finally {
-    rejectLoading.value = false
-  }
+  rejectMutation.mutate(
+    { userId: rejectTarget.value.id, reason: rejectReason.value },
+    { onSuccess: () => { rejectDialogOpen.value = false } },
+  )
 }
 
-onMounted(() => {
-  if (!loading.value && (!user.value || user.value.role !== 'admin')) {
-    router.replace('/login')
-  } else {
-    fetchPendingUsers()
-  }
+watch([user, loading], ([u, l]) => {
+  if (!l && (!u || u.role !== 'admin')) router.replace('/login')
 })
 </script>
 
@@ -173,7 +79,6 @@ onMounted(() => {
     </div>
 
     <div v-else-if="user && user.role === 'admin'" class="max-w-5xl mx-auto">
-      <!-- Header -->
       <div class="flex items-center gap-4 mb-8">
         <Button variant="ghost" size="sm" @click="router.push('/admin')">
           <ArrowLeft class="size-4 mr-1" />
@@ -185,19 +90,17 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Error -->
       <Alert v-if="error" variant="destructive" class="mb-6">
         <AlertCircle class="h-4 w-4" />
-        <AlertDescription>{{ error }}</AlertDescription>
+        <AlertDescription>{{ error.message }}</AlertDescription>
       </Alert>
 
-      <!-- Pending Users Card -->
       <Card>
         <CardHeader>
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div class="flex items-center gap-3">
               <CardTitle>Pending Users</CardTitle>
-              <Badge variant="secondary" class="text-xs">{{ users.length }}</Badge>
+              <Badge variant="secondary" class="text-xs">{{ users?.length ?? 0 }}</Badge>
             </div>
             <div class="flex items-center gap-3">
               <div class="relative">
@@ -208,10 +111,6 @@ onMounted(() => {
                   class="pl-9 w-64"
                 />
               </div>
-              <Button variant="outline" size="sm" @click="fetchPendingUsers" :disabled="loadingUsers">
-                <LoaderCircle v-if="loadingUsers" class="size-4 animate-spin" />
-                Refresh
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -253,17 +152,17 @@ onMounted(() => {
                 <Button
                   variant="default"
                   size="sm"
-                  :disabled="actionLoading === u.id"
+                  :disabled="approveMutation.isPending.value || rejectMutation.isPending.value"
                   @click="approveUser(u.id)"
                 >
-                  <LoaderCircle v-if="actionLoading === u.id" class="size-3 animate-spin mr-1" />
+                  <LoaderCircle v-if="approveMutation.isPending.value" class="size-3 animate-spin mr-1" />
                   <CheckCircle v-else class="size-3 mr-1" />
                   Approve
                 </Button>
                 <Button
                   variant="destructive"
                   size="sm"
-                  :disabled="actionLoading === u.id"
+                  :disabled="approveMutation.isPending.value || rejectMutation.isPending.value"
                   @click="openRejectDialog(u)"
                 >
                   <XCircle class="size-3 mr-1" />
@@ -275,7 +174,6 @@ onMounted(() => {
         </CardContent>
       </Card>
 
-      <!-- Reject Dialog -->
       <Dialog v-model:open="rejectDialogOpen">
         <DialogContent class="sm:max-w-md">
           <DialogHeader>
@@ -308,11 +206,11 @@ onMounted(() => {
             <Button variant="outline" @click="rejectDialogOpen = false">Cancel</Button>
             <Button
               variant="destructive"
-              :disabled="!rejectReason || rejectLoading"
+              :disabled="!rejectReason || rejectMutation.isPending.value"
               @click="confirmReject"
             >
-              <LoaderCircle v-if="rejectLoading" class="size-4 animate-spin mr-1" />
-              {{ rejectLoading ? 'Rejecting...' : 'Confirm Rejection' }}
+              <LoaderCircle v-if="rejectMutation.isPending.value" class="size-4 animate-spin mr-1" />
+              {{ rejectMutation.isPending.value ? 'Rejecting...' : 'Confirm Rejection' }}
             </Button>
           </DialogFooter>
         </DialogContent>

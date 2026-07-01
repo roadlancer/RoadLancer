@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-import { ref, watch, onMounted } from 'vue'
+import { watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { authClient } from '@/lib/auth-client'
+import { useVerificationStatus } from '@/composables/useVerificationStatus'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -10,32 +10,12 @@ import { LoaderCircle, ShieldCheck, FileText, AlertCircle } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()
-const isVerified = ref<boolean | null>(null)
-const loadingVerification = ref(true)
+const { isVerified, isLoading: loadingVerification } = useVerificationStatus()
 
 watch([user, loading], ([u, l]) => {
   if (!l) {
     if (!u) router.replace('/login')
     else if (u.role !== 'shipper') router.replace('/')
-  }
-})
-
-onMounted(async () => {
-  if (!user.value) return
-  try {
-    const session = await authClient.getSession()
-    const token = (session.data as any)?.session?.token
-    if (!token) return
-
-    const res = await fetch('/api/verification/status', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = await res.json()
-    isVerified.value = data.status === 'approved'
-  } catch {
-    isVerified.value = false
-  } finally {
-    loadingVerification.value = false
   }
 })
 </script>

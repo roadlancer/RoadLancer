@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { authClient } from '@/lib/auth-client'
+import { useVerificationList } from '@/composables/useVerificationList'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,15 +16,19 @@ import { LoaderCircle, CheckCircle2, XCircle, Clock, Search, ArrowLeft, ShieldCh
 const router = useRouter()
 const { user, loading } = useAuth()
 
-const verifications = ref<any[]>([])
-const loadingData = ref(true)
-const searchQuery = ref('')
-const activeTab = ref('pending')
+const {
+  data: verifications,
+  isLoading: loadingData,
+  searchQuery,
+  activeTab,
+  approveMutation,
+  rejectMutation,
+} = useVerificationList()
+
 const selectedVerification = ref<any>(null)
 const showDetailDialog = ref(false)
 const showRejectDialog = ref(false)
 const rejectReason = ref('')
-const processingId = ref<string | null>(null)
 
 watch([user, loading], ([u, l]) => {
   if (!l) {
@@ -33,65 +37,15 @@ watch([user, loading], ([u, l]) => {
   }
 })
 
-async function getToken() {
-  const session = await authClient.getSession()
-  return (session.data as any)?.session?.token
-}
-
-async function fetchVerifications() {
-  loadingData.value = true
-  try {
-    const token = await getToken()
-    if (!token) return
-
-    const params = new URLSearchParams()
-    if (activeTab.value !== 'all') params.set('status', activeTab.value)
-    if (searchQuery.value) params.set('search', searchQuery.value)
-
-    const res = await fetch(`/api/verification/admin/list?${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    verifications.value = await res.json()
-  } catch {
-    // ignore
-  } finally {
-    loadingData.value = false
-  }
-}
-
-onMounted(() => {
-  if (user.value?.role === 'admin') fetchVerifications()
-})
-
-function handleSearch() {
-  fetchVerifications()
-}
-
-function handleTabChange(value: string) {
-  activeTab.value = value
-  fetchVerifications()
-}
-
 function viewDetails(v: any) {
   selectedVerification.value = v
   showDetailDialog.value = true
 }
 
-async function approveVerification(id: string) {
-  processingId.value = id
-  try {
-    const token = await getToken()
-    await fetch(`/api/verification/admin/${id}/approve`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    showDetailDialog.value = false
-    fetchVerifications()
-  } catch {
-    // ignore
-  } finally {
-    processingId.value = null
-  }
+function approveVerification(id: string) {
+  approveMutation.mutate(id, {
+    onSuccess: () => { showDetailDialog.value = false },
+  })
 }
 
 function openRejectDialog() {
@@ -99,27 +53,17 @@ function openRejectDialog() {
   showRejectDialog.value = true
 }
 
-async function confirmReject() {
+function confirmReject() {
   if (!selectedVerification.value) return
-  processingId.value = selectedVerification.value.id
-  try {
-    const token = await getToken()
-    await fetch(`/api/verification/admin/${selectedVerification.value.id}/reject`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+  rejectMutation.mutate(
+    { id: selectedVerification.value.id, reason: rejectReason.value },
+    {
+      onSuccess: () => {
+        showRejectDialog.value = false
+        showDetailDialog.value = false
       },
-      body: JSON.stringify({ reason: rejectReason.value || undefined }),
-    })
-    showRejectDialog.value = false
-    showDetailDialog.value = false
-    fetchVerifications()
-  } catch {
-    // ignore
-  } finally {
-    processingId.value = null
-  }
+    },
+  )
 }
 
 function statusColor(status: string) {
@@ -155,13 +99,11 @@ function roleBadgeColor(role: string) {
             v-model="searchQuery"
             placeholder="Search by name or email..."
             class="pl-9"
-            @keydown.enter="handleSearch"
           />
         </div>
-        <Button variant="outline" @click="handleSearch">Search</Button>
       </div>
 
-      <Tabs v-model="activeTab" class="mb-6" @update:model-value="handleTabChange">
+      <Tabs v-model="activeTab" class="mb-6">
         <TabsList>
           <TabsTrigger value="pending">
             <Clock class="size-4 mr-1" />
@@ -184,7 +126,7 @@ function roleBadgeColor(role: string) {
         <p class="text-muted-foreground mt-2">Loading verifications...</p>
       </div>
 
-      <div v-else-if="verifications.length === 0" class="text-center py-12">
+      <div v-else-if="!verifications || verifications.length === 0" class="text-center py-12">
         <ShieldCheck class="size-12 mx-auto text-muted-foreground/50 mb-4" />
         <p class="text-muted-foreground">No verification submissions found.</p>
       </div>
@@ -223,7 +165,6 @@ function roleBadgeColor(role: string) {
         </Card>
       </div>
 
-      <!-- Detail Dialog -->
       <Dialog v-model:open="showDetailDialog">
         <DialogContent class="max-w-lg">
           <DialogHeader>
@@ -250,7 +191,6 @@ function roleBadgeColor(role: string) {
             </div>
 
             <div class="grid grid-cols-2 gap-3 text-sm">
-              <!-- Driver Fields -->
               <template v-if="selectedVerification.userRole === 'driver'">
                 <div class="space-y-1">
                   <p class="text-muted-foreground flex items-center gap-1"><CreditCard class="size-3" /> License Number</p>
@@ -266,7 +206,6 @@ function roleBadgeColor(role: string) {
                 </div>
               </template>
 
-              <!-- Shipper Fields -->
               <template v-if="selectedVerification.userRole === 'shipper'">
                 <div class="space-y-1 col-span-2">
                   <p class="text-muted-foreground flex items-center gap-1"><Building2 class="size-3" /> Business Name</p>
@@ -300,16 +239,16 @@ function roleBadgeColor(role: string) {
             <Button
               variant="outline"
               @click="openRejectDialog"
-              :disabled="processingId === selectedVerification?.id"
+              :disabled="approveMutation.isPending.value || rejectMutation.isPending.value"
             >
               <XCircle class="size-4 mr-1" />
               Reject
             </Button>
             <Button
               @click="approveVerification(selectedVerification?.id)"
-              :disabled="processingId === selectedVerification?.id"
+              :disabled="approveMutation.isPending.value || rejectMutation.isPending.value"
             >
-              <LoaderCircle v-if="processingId === selectedVerification?.id" class="size-4 animate-spin" />
+              <LoaderCircle v-if="approveMutation.isPending.value" class="size-4 animate-spin" />
               <CheckCircle2 v-else class="size-4 mr-1" />
               Approve
             </Button>
@@ -317,7 +256,6 @@ function roleBadgeColor(role: string) {
         </DialogContent>
       </Dialog>
 
-      <!-- Reject Dialog -->
       <Dialog v-model:open="showRejectDialog">
         <DialogContent>
           <DialogHeader>
@@ -341,9 +279,9 @@ function roleBadgeColor(role: string) {
             <Button
               variant="destructive"
               @click="confirmReject"
-              :disabled="processingId === selectedVerification?.id"
+              :disabled="rejectMutation.isPending.value"
             >
-              <LoaderCircle v-if="processingId === selectedVerification?.id" class="size-4 animate-spin" />
+              <LoaderCircle v-if="rejectMutation.isPending.value" class="size-4 animate-spin" />
               Reject
             </Button>
           </DialogFooter>

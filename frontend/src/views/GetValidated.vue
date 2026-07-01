@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { reactive, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
-import { authClient } from '@/lib/auth-client'
+import { useVerificationStatus, useSubmitVerification } from '@/composables/useVerificationStatus'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,12 +15,11 @@ import { LoaderCircle, CheckCircle2, XCircle, Clock, ShieldCheck, ArrowLeft, Tru
 const router = useRouter()
 const { user, loading } = useAuth()
 
-const submitting = ref(false)
-const submitSuccess = ref(false)
-const submitError = ref('')
-const verificationStatus = ref<string>('none')
-const verificationData = ref<any>(null)
-const loadingStatus = ref(true)
+const { data: verification, isLoading: loadingStatus, isVerified } = useVerificationStatus()
+const submitMutation = useSubmitVerification()
+
+const verificationStatus = computed(() => verification.value?.status ?? 'none')
+const verificationData = computed(() => verification.value?.verification ?? null)
 
 const driverForm = reactive({
   licenseNumber: '',
@@ -37,44 +36,18 @@ const shipperForm = reactive({
 const driverErrors = reactive({ licenseNumber: '', vehicleType: '', vehicleNumber: '' })
 const shipperErrors = reactive({ businessName: '', gstNumber: '', companyAddress: '' })
 
-watch([user, loading], ([u, l]) => {
-  if (!l) {
-    if (!u) router.replace('/login')
-    else if (u.role !== 'driver' && u.role !== 'shipper') router.replace('/')
+watch(verificationData, (data) => {
+  if (!data || !user.value) return
+  if (user.value.role === 'driver') {
+    driverForm.licenseNumber = data.licenseNumber || ''
+    driverForm.vehicleType = data.vehicleType || ''
+    driverForm.vehicleNumber = data.vehicleNumber || ''
+  } else {
+    shipperForm.businessName = data.businessName || ''
+    shipperForm.gstNumber = data.gstNumber || ''
+    shipperForm.companyAddress = data.companyAddress || ''
   }
-})
-
-onMounted(async () => {
-  if (!user.value) return
-  try {
-    const session = await authClient.getSession()
-    const token = (session.data as any)?.session?.token
-    if (!token) return
-
-    const res = await fetch('/api/verification/status', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = await res.json()
-    verificationStatus.value = data.status
-    verificationData.value = data.verification
-
-    if (data.verification) {
-      if (user.value?.role === 'driver') {
-        driverForm.licenseNumber = data.verification.licenseNumber || ''
-        driverForm.vehicleType = data.verification.vehicleType || ''
-        driverForm.vehicleNumber = data.verification.vehicleNumber || ''
-      } else {
-        shipperForm.businessName = data.verification.businessName || ''
-        shipperForm.gstNumber = data.verification.gstNumber || ''
-        shipperForm.companyAddress = data.verification.companyAddress || ''
-      }
-    }
-  } catch {
-    // ignore
-  } finally {
-    loadingStatus.value = false
-  }
-})
+}, { immediate: true })
 
 function validateDriver() {
   let valid = true
@@ -118,49 +91,14 @@ function validateShipper() {
   return valid
 }
 
-async function handleSubmit() {
-  submitError.value = ''
-  submitSuccess.value = false
-
+function handleSubmit() {
   const isDriver = user.value?.role === 'driver'
   if (isDriver ? !validateDriver() : !validateShipper()) return
 
-  submitting.value = true
-  try {
-    const session = await authClient.getSession()
-    const token = (session.data as any)?.session?.token
-    if (!token) {
-      submitError.value = 'Not authenticated'
-      return
-    }
+  const endpoint = isDriver ? '/verification/submit/driver' : '/verification/submit/shipper'
+  const body = isDriver ? driverForm : shipperForm
 
-    const endpoint = isDriver ? '/api/verification/submit/driver' : '/api/verification/submit/shipper'
-    const body = isDriver ? driverForm : shipperForm
-
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!res.ok) {
-      const data = await res.json()
-      submitError.value = data.detail || 'Failed to submit verification'
-      return
-    }
-
-    const data = await res.json()
-    verificationStatus.value = data.status
-    verificationData.value = data
-    submitSuccess.value = true
-  } catch {
-    submitError.value = 'Something went wrong. Please try again.'
-  } finally {
-    submitting.value = false
-  }
+  submitMutation.mutate({ endpoint, body })
 }
 
 function goBack() {
@@ -169,6 +107,13 @@ function goBack() {
   else if (role === 'shipper') router.push('/shipper')
   else router.push('/')
 }
+
+watch([user, loading], ([u, l]) => {
+  if (!l) {
+    if (!u) router.replace('/login')
+    else if (u.role !== 'driver' && u.role !== 'shipper') router.replace('/')
+  }
+})
 </script>
 
 <template>
@@ -192,7 +137,6 @@ function goBack() {
           </p>
         </div>
 
-        <!-- Status Cards -->
         <div v-if="verificationStatus === 'approved'" class="mb-6">
           <Alert class="border-green-200 bg-green-50 text-green-800">
             <CheckCircle2 class="h-4 w-4 text-green-600" />
@@ -221,7 +165,6 @@ function goBack() {
           </Alert>
         </div>
 
-        <!-- Driver Form -->
         <Card v-if="user?.role === 'driver'">
           <CardHeader>
             <CardTitle class="flex items-center gap-2">
@@ -233,10 +176,10 @@ function goBack() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Alert v-if="submitError" variant="destructive" class="mb-4">
-              <AlertDescription>{{ submitError }}</AlertDescription>
+            <Alert v-if="submitMutation.isError.value" variant="destructive" class="mb-4">
+              <AlertDescription>{{ (submitMutation.error.value as any)?.response?.data?.detail || 'Something went wrong.' }}</AlertDescription>
             </Alert>
-            <Alert v-if="submitSuccess" class="mb-4 border-green-200 bg-green-50 text-green-800">
+            <Alert v-if="submitMutation.isSuccess.value" class="mb-4 border-green-200 bg-green-50 text-green-800">
               <CheckCircle2 class="h-4 w-4 text-green-600" />
               <AlertDescription class="text-green-700">
                 Verification submitted successfully! An admin will review your details.
@@ -287,11 +230,11 @@ function goBack() {
 
               <Button
                 type="submit"
-                :disabled="submitting || verificationStatus === 'approved' || verificationStatus === 'pending'"
+                :disabled="submitMutation.isPending.value || verificationStatus === 'approved' || verificationStatus === 'pending'"
                 class="w-full"
                 size="lg"
               >
-                <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
+                <LoaderCircle v-if="submitMutation.isPending.value" class="size-4 animate-spin" />
                 <ShieldCheck v-else class="size-4 mr-2" />
                 {{
                   verificationStatus === 'approved' ? 'Already Verified'
@@ -304,7 +247,6 @@ function goBack() {
           </CardContent>
         </Card>
 
-        <!-- Shipper Form -->
         <Card v-if="user?.role === 'shipper'">
           <CardHeader>
             <CardTitle class="flex items-center gap-2">
@@ -316,10 +258,10 @@ function goBack() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Alert v-if="submitError" variant="destructive" class="mb-4">
-              <AlertDescription>{{ submitError }}</AlertDescription>
+            <Alert v-if="submitMutation.isError.value" variant="destructive" class="mb-4">
+              <AlertDescription>{{ (submitMutation.error.value as any)?.response?.data?.detail || 'Something went wrong.' }}</AlertDescription>
             </Alert>
-            <Alert v-if="submitSuccess" class="mb-4 border-green-200 bg-green-50 text-green-800">
+            <Alert v-if="submitMutation.isSuccess.value" class="mb-4 border-green-200 bg-green-50 text-green-800">
               <CheckCircle2 class="h-4 w-4 text-green-600" />
               <AlertDescription class="text-green-700">
                 Verification submitted successfully! An admin will review your details.
@@ -370,11 +312,11 @@ function goBack() {
 
               <Button
                 type="submit"
-                :disabled="submitting || verificationStatus === 'approved' || verificationStatus === 'pending'"
+                :disabled="submitMutation.isPending.value || verificationStatus === 'approved' || verificationStatus === 'pending'"
                 class="w-full"
                 size="lg"
               >
-                <LoaderCircle v-if="submitting" class="size-4 animate-spin" />
+                <LoaderCircle v-if="submitMutation.isPending.value" class="size-4 animate-spin" />
                 <ShieldCheck v-else class="size-4 mr-2" />
                 {{
                   verificationStatus === 'approved' ? 'Already Verified'

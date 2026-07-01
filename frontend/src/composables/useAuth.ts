@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { authClient } from '@/lib/auth-client'
+import api from '@/lib/api'
 
 interface User {
   id: string
@@ -35,14 +36,7 @@ export function useAuth() {
 
   const signOut = async () => {
     try {
-      const { data: sessionData } = await authClient.getSession()
-      const token = (sessionData as any)?.session?.token
-      if (token) {
-        await fetch('/api/auth/sign-out', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-        })
-      }
+      await api.post('/auth/sign-out')
     } catch {
       // ignore backend errors, still sign out locally
     }
