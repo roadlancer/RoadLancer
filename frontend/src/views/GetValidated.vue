@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
 import { LoaderCircle, CheckCircle2, XCircle, Clock, ShieldCheck, ArrowLeft, Truck, FileText } from '@lucide/vue'
 
 const router = useRouter()
@@ -119,9 +120,33 @@ watch([user, loading], ([u, l]) => {
 <template>
   <div class="flex-1 p-8 bg-background">
     <div class="max-w-2xl mx-auto">
-      <div v-if="loading || loadingStatus" class="text-center py-12">
-        <LoaderCircle class="size-8 animate-spin mx-auto text-muted-foreground" />
-        <p class="text-muted-foreground mt-2">Loading...</p>
+      <div v-if="loading || loadingStatus" class="max-w-2xl mx-auto">
+        <Skeleton class="h-9 w-32 mb-4" />
+        <Skeleton class="h-9 w-48 mb-2" />
+        <Skeleton class="h-5 w-80 mb-6" />
+        <Skeleton class="h-16 w-full mb-6" />
+        <Card>
+          <CardHeader>
+            <Skeleton class="h-6 w-48 mb-2" />
+            <Skeleton class="h-4 w-64" />
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="space-y-2">
+              <Skeleton class="h-4 w-24" />
+              <Skeleton class="h-10 w-full" />
+            </div>
+            <div class="space-y-2">
+              <Skeleton class="h-4 w-24" />
+              <Skeleton class="h-10 w-full" />
+            </div>
+            <div class="space-y-2">
+              <Skeleton class="h-4 w-24" />
+              <Skeleton class="h-10 w-full" />
+            </div>
+            <Skeleton class="h-px w-full my-4" />
+            <Skeleton class="h-12 w-full" />
+          </CardContent>
+        </Card>
       </div>
 
       <template v-else-if="user?.role === 'driver' || user?.role === 'shipper'">

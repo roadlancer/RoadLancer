@@ -6,6 +6,7 @@ import { useVerificationStatus } from '@/composables/useVerificationStatus'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
 import { LoaderCircle, ShieldCheck, Truck, AlertCircle } from '@lucide/vue'
 
 const router = useRouter()
@@ -22,9 +23,21 @@ watch([user, loading], ([u, l]) => {
 
 <template>
   <div class="flex-1 flex items-center justify-center p-8">
-    <div v-if="loading || loadingVerification" class="text-center">
-      <LoaderCircle class="size-8 animate-spin mx-auto text-muted-foreground" />
-      <p class="text-muted-foreground mt-2">Loading...</p>
+    <div v-if="loading || loadingVerification" class="text-center max-w-lg">
+      <Skeleton class="h-9 w-48 mx-auto mb-2" />
+      <Skeleton class="h-5 w-64 mx-auto mb-6" />
+      <Skeleton class="h-20 w-full mb-6" />
+      <Card>
+        <CardHeader>
+          <Skeleton class="h-6 w-32 mb-2" />
+          <Skeleton class="h-4 w-48" />
+        </CardHeader>
+        <CardContent class="space-y-3">
+          <Skeleton class="h-4 w-full" />
+          <Skeleton class="h-4 w-full" />
+          <Skeleton class="h-4 w-2/3" />
+        </CardContent>
+      </Card>
     </div>
     <div v-else-if="user?.role === 'driver'" class="text-center max-w-lg">
       <h1 class="text-3xl font-bold text-foreground mb-2">Driver Dashboard</h1>

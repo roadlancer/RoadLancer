@@ -12,6 +12,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { LoaderCircle, Clock, Search, AlertCircle, CheckCircle, XCircle, ArrowLeft } from '@lucide/vue'
 
 const router = useRouter()
@@ -73,9 +74,35 @@ watch([user, loading], ([u, l]) => {
 
 <template>
   <div class="flex-1 p-8">
-    <div v-if="loading" class="text-center py-20">
-      <LoaderCircle class="size-8 text-primary animate-spin mx-auto mb-4" />
-      <p class="text-muted-foreground">Loading...</p>
+    <div v-if="loading" class="max-w-5xl mx-auto">
+      <div class="flex items-center gap-4 mb-8">
+        <Skeleton class="h-9 w-24" />
+        <div>
+          <Skeleton class="h-9 w-48 mb-1" />
+          <Skeleton class="h-5 w-64" />
+        </div>
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton class="h-6 w-32 mb-4" />
+          <Skeleton class="h-10 w-full" />
+        </CardHeader>
+        <CardContent>
+          <div class="space-y-4">
+            <div v-for="i in 3" :key="i" class="flex items-center gap-4 p-4">
+              <Skeleton class="w-10 h-10 rounded-full" />
+              <div class="flex-1 space-y-2">
+                <Skeleton class="h-4 w-32" />
+                <Skeleton class="h-3 w-48" />
+              </div>
+              <div class="flex gap-2">
+                <Skeleton class="h-8 w-20" />
+                <Skeleton class="h-8 w-16" />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
 
     <div v-else-if="user && user.role === 'admin'" class="max-w-5xl mx-auto">
@@ -115,9 +142,22 @@ watch([user, loading], ([u, l]) => {
           </div>
         </CardHeader>
         <CardContent>
-          <div v-if="loadingUsers" class="text-center py-12">
-            <LoaderCircle class="size-6 text-primary animate-spin mx-auto mb-3" />
-            <p class="text-sm text-muted-foreground">Loading pending users...</p>
+          <div v-if="loadingUsers" class="space-y-4">
+            <div v-for="i in 3" :key="i" class="flex items-center gap-4 p-4">
+              <Skeleton class="w-10 h-10 rounded-full" />
+              <div class="flex-1 space-y-2">
+                <Skeleton class="h-4 w-32" />
+                <Skeleton class="h-3 w-48" />
+                <div class="flex gap-2 mt-1">
+                  <Skeleton class="h-4 w-16" />
+                  <Skeleton class="h-4 w-24" />
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <Skeleton class="h-8 w-20" />
+                <Skeleton class="h-8 w-16" />
+              </div>
+            </div>
           </div>
 
           <div v-else-if="filteredUsers.length === 0" class="text-center py-12">
