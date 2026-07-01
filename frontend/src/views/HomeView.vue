@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
 import { LoaderCircle, Mail, Phone, Shield } from '@lucide/vue'
 
 const router = useRouter()
@@ -20,9 +21,22 @@ watch([user, loading], ([u, l]) => {
 
 <template>
   <div class="flex-1 flex items-center justify-center p-8">
-    <div v-if="loading" class="text-center">
-      <LoaderCircle class="size-8 text-primary animate-spin mx-auto mb-4" />
-      <p class="text-muted-foreground">Loading...</p>
+    <div v-if="loading" class="text-center max-w-lg">
+      <Skeleton class="w-20 h-20 rounded-full mx-auto mb-6" />
+      <Skeleton class="h-9 w-64 mx-auto mb-2" />
+      <Skeleton class="h-5 w-48 mx-auto mb-8" />
+      <Separator class="mb-8" />
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card v-for="i in 3" :key="i">
+          <CardContent class="flex flex-col items-center gap-3 pt-6">
+            <Skeleton class="w-10 h-10 rounded-lg" />
+            <div class="text-center space-y-2">
+              <Skeleton class="h-4 w-12 mx-auto" />
+              <Skeleton class="h-5 w-20 mx-auto" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
 
     <div v-else-if="user" class="text-center max-w-lg">

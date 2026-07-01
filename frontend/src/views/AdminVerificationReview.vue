@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
 import { LoaderCircle, CheckCircle2, XCircle, Clock, Search, ArrowLeft, ShieldCheck, User, Mail, Phone, Building2, CreditCard, MapPin, Truck, FileText, Eye } from '@lucide/vue'
 
 const router = useRouter()
@@ -121,9 +122,23 @@ function roleBadgeColor(role: string) {
         </TabsList>
       </Tabs>
 
-      <div v-if="loadingData" class="text-center py-12">
-        <LoaderCircle class="size-8 animate-spin mx-auto text-muted-foreground" />
-        <p class="text-muted-foreground mt-2">Loading verifications...</p>
+      <div v-if="loadingData" class="space-y-3">
+        <Card v-for="i in 4" :key="i">
+          <CardContent class="p-4 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+              <Skeleton class="w-10 h-10 rounded-full" />
+              <div class="space-y-2">
+                <Skeleton class="h-4 w-32" />
+                <Skeleton class="h-3 w-48" />
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <Skeleton class="h-6 w-16" />
+              <Skeleton class="h-6 w-20" />
+              <Skeleton class="h-8 w-8" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div v-else-if="!verifications || verifications.length === 0" class="text-center py-12">

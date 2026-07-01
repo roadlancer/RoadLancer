@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
+import { Skeleton } from '@/components/ui/skeleton'
 import { LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
 
 const router = useRouter()
@@ -111,9 +112,42 @@ watch([user, loading], ([u, l]) => {
 
 <template>
   <div class="flex-1 p-8">
-    <div v-if="loading" class="text-center py-20">
-      <LoaderCircle class="size-8 text-primary animate-spin mx-auto mb-4" />
-      <p class="text-muted-foreground">Loading...</p>
+    <div v-if="loading" class="max-w-6xl mx-auto">
+      <div class="mb-8">
+        <Skeleton class="h-9 w-64 mb-2" />
+        <Skeleton class="h-5 w-96" />
+      </div>
+      <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-8">
+        <Card v-for="i in 7" :key="i">
+          <CardContent class="pt-6">
+            <div class="flex items-center gap-3">
+              <Skeleton class="w-10 h-10 rounded-lg" />
+              <div class="space-y-2">
+                <Skeleton class="h-8 w-12" />
+                <Skeleton class="h-3 w-16" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton class="h-6 w-24 mb-4" />
+          <Skeleton class="h-10 w-full" />
+        </CardHeader>
+        <CardContent>
+          <div class="space-y-4">
+            <div v-for="i in 5" :key="i" class="flex items-center gap-4">
+              <Skeleton class="w-8 h-8 rounded-full" />
+              <div class="flex-1 space-y-2">
+                <Skeleton class="h-4 w-32" />
+                <Skeleton class="h-3 w-48" />
+              </div>
+              <Skeleton class="h-6 w-16" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
 
     <div v-else-if="user && user.role === 'admin'" class="max-w-6xl mx-auto">
@@ -254,9 +288,16 @@ watch([user, loading], ([u, l]) => {
           </Tabs>
         </CardHeader>
         <CardContent>
-          <div v-if="loadingUsers" class="text-center py-12">
-            <LoaderCircle class="size-6 text-primary animate-spin mx-auto mb-3" />
-            <p class="text-sm text-muted-foreground">Loading users...</p>
+          <div v-if="loadingUsers" class="space-y-4">
+            <div v-for="i in 5" :key="i" class="flex items-center gap-4 p-3">
+              <Skeleton class="w-8 h-8 rounded-full" />
+              <div class="flex-1 space-y-2">
+                <Skeleton class="h-4 w-32" />
+                <Skeleton class="h-3 w-48" />
+              </div>
+              <Skeleton class="h-6 w-16" />
+              <Skeleton class="h-6 w-20" />
+            </div>
           </div>
 
           <div v-else-if="filteredUsers.length === 0" class="text-center py-12">
