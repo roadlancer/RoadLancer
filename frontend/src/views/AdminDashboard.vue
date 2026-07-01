@@ -9,7 +9,11 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle } from '@lucide/vue'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog'
+import {   LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()
@@ -21,6 +25,7 @@ interface UserRecord {
   role: string
   phone: string | null
   suspended: boolean
+  status: string
   created_at: string | null
 }
 
@@ -30,6 +35,44 @@ const searchQuery = ref('')
 const activeTab = ref('all')
 const actionLoading = ref<string | null>(null)
 const error = ref('')
+const pendingVerifications = ref(0)
+const rejectedVerifications = ref(0)
+
+// Suspend dialog state
+const suspendDialogOpen = ref(false)
+const suspendTarget = ref<UserRecord | null>(null)
+const suspendReason = ref('')
+const suspendLoading = ref(false)
+
+const driverReasons = [
+  'Repeated late deliveries',
+  'Poor driving behavior reported',
+  'Vehicle safety violations',
+  'Refusal to accept assigned shipments',
+  'Fraudulent activity or document tampering',
+  'Abandoning a shipment mid-route',
+  'Damage to goods in transit',
+  'Unprofessional conduct with shippers',
+  'Violation of terms of service',
+  'Other',
+]
+
+const shipperReasons = [
+  'Fraudulent shipment listings',
+  'Non-payment for completed deliveries',
+  'Repeated cancellation of active shipments',
+  'Listing prohibited or illegal goods',
+  'Providing false pickup/dropoff addresses',
+  'Harassment or abuse of drivers',
+  'Violation of terms of service',
+  'Other',
+]
+
+const suspendReasons = computed(() => {
+  if (suspendTarget.value?.role === 'driver') return driverReasons
+  if (suspendTarget.value?.role === 'shipper') return shipperReasons
+  return []
+})
 
 const filteredUsers = computed(() => {
   let result = users.value
@@ -49,6 +92,7 @@ const stats = computed(() => ({
   total: users.value.length,
   drivers: users.value.filter(u => u.role === 'driver').length,
   shippers: users.value.filter(u => u.role === 'shipper').length,
+  admins: users.value.filter(u => u.role === 'admin').length,
   suspended: users.value.filter(u => u.suspended).length,
 }))
 
@@ -82,6 +126,22 @@ async function fetchUsers() {
       throw new Error(data.detail || 'Failed to fetch users')
     }
     users.value = await res.json()
+
+    const vRes = await fetch('/api/verification/admin/count', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (vRes.ok) {
+      const vData = await vRes.json()
+      pendingVerifications.value = vData.count
+    }
+
+    const rRes = await fetch('/api/verification/admin/count?status=rejected', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (rRes.ok) {
+      const rData = await rRes.json()
+      rejectedVerifications.value = rData.count
+    }
   } catch (e: any) {
     error.value = e.message || 'Failed to load users'
   } finally {
@@ -89,7 +149,46 @@ async function fetchUsers() {
   }
 }
 
-async function toggleSuspend(userId: string, currentSuspended: boolean) {
+function openSuspendDialog(u: UserRecord) {
+  suspendTarget.value = u
+  suspendReason.value = ''
+  suspendDialogOpen.value = true
+}
+
+async function confirmSuspend() {
+  if (!suspendTarget.value || !suspendReason.value) return
+  suspendLoading.value = true
+  error.value = ''
+  try {
+    const token = await getSessionToken()
+    if (!token) {
+      router.push('/login')
+      return
+    }
+    const res = await fetch(`/api/admin/users/${suspendTarget.value.id}/suspend`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ suspended: true }),
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      throw new Error(data.detail || 'Failed to suspend user')
+    }
+    const updated = await res.json()
+    const idx = users.value.findIndex(u => u.id === suspendTarget.value!.id)
+    if (idx !== -1) users.value[idx] = updated
+    suspendDialogOpen.value = false
+  } catch (e: any) {
+    error.value = e.message || 'Failed to suspend user'
+  } finally {
+    suspendLoading.value = false
+  }
+}
+
+async function unsuspendUser(userId: string) {
   actionLoading.value = userId
   error.value = ''
   try {
@@ -104,17 +203,17 @@ async function toggleSuspend(userId: string, currentSuspended: boolean) {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ suspended: !currentSuspended }),
+      body: JSON.stringify({ suspended: false }),
     })
     if (!res.ok) {
       const data = await res.json()
-      throw new Error(data.detail || 'Failed to update user')
+      throw new Error(data.detail || 'Failed to unsuspend user')
     }
     const updated = await res.json()
     const idx = users.value.findIndex(u => u.id === userId)
     if (idx !== -1) users.value[idx] = updated
   } catch (e: any) {
-    error.value = e.message || 'Failed to update user'
+    error.value = e.message || 'Failed to unsuspend user'
   } finally {
     actionLoading.value = null
   }
@@ -144,7 +243,7 @@ onMounted(() => {
       </div>
 
       <!-- Stats -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-8">
         <Card>
           <CardContent class="pt-6">
             <div class="flex items-center gap-3">
@@ -184,6 +283,49 @@ onMounted(() => {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent class="pt-6">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                <Shield class="size-5 text-amber-600" />
+              </div>
+              <div>
+                <p class="text-2xl font-bold">{{ stats.admins }}</p>
+                <p class="text-xs text-muted-foreground">Admins</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <router-link to="/admin/verifications" class="block">
+          <Card class="hover:border-primary/50 transition-colors cursor-pointer">
+            <CardContent class="pt-6">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-orange-500/10 rounded-lg flex items-center justify-center">
+                  <Clock class="size-5 text-orange-600" />
+                </div>
+                <div>
+                  <p class="text-2xl font-bold">{{ pendingVerifications }}</p>
+                  <p class="text-xs text-muted-foreground">Pending</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </router-link>
+        <router-link to="/admin/verifications" class="block">
+          <Card class="hover:border-destructive/50 transition-colors cursor-pointer">
+            <CardContent class="pt-6">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
+                  <XCircle class="size-5 text-red-600" />
+                </div>
+                <div>
+                  <p class="text-2xl font-bold">{{ rejectedVerifications }}</p>
+                  <p class="text-xs text-muted-foreground">Rejected</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </router-link>
         <Card>
           <CardContent class="pt-6">
             <div class="flex items-center gap-3">
@@ -282,14 +424,22 @@ onMounted(() => {
                   </td>
                   <td class="py-3 px-2 text-right">
                     <Button
-                      v-if="u.role !== 'admin'"
+                      v-if="u.role !== 'admin' && !u.suspended"
+                      variant="destructive"
+                      size="sm"
+                      @click="openSuspendDialog(u)"
+                    >
+                      Suspend
+                    </Button>
+                    <Button
+                      v-else-if="u.role !== 'admin' && u.suspended"
                       variant="outline"
                       size="sm"
                       :disabled="actionLoading === u.id"
-                      @click="toggleSuspend(u.id, u.suspended)"
+                      @click="unsuspendUser(u.id)"
                     >
                       <LoaderCircle v-if="actionLoading === u.id" class="size-3 animate-spin mr-1" />
-                      {{ u.suspended ? 'Unsuspend' : 'Suspend' }}
+                      Unsuspend
                     </Button>
                   </td>
                 </tr>
@@ -298,6 +448,50 @@ onMounted(() => {
           </div>
         </CardContent>
       </Card>
+
+      <!-- Suspend Dialog -->
+      <Dialog v-model:open="suspendDialogOpen">
+        <DialogContent class="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Suspend User</DialogTitle>
+            <DialogDescription>
+              Select a reason for suspending
+              <span class="font-semibold text-foreground">{{ suspendTarget?.name }}</span>
+              ({{ suspendTarget?.role }}).
+              This will revoke their active sessions.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div class="space-y-2 max-h-64 overflow-y-auto py-2">
+            <label
+              v-for="reason in suspendReasons"
+              :key="reason"
+              class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors"
+              :class="suspendReason === reason ? 'border-destructive bg-destructive/5' : 'border-border hover:border-destructive/50'"
+            >
+              <input
+                type="radio"
+                :value="reason"
+                v-model="suspendReason"
+                class="size-4 accent-destructive"
+              />
+              <span class="text-sm">{{ reason }}</span>
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" @click="suspendDialogOpen = false">Cancel</Button>
+            <Button
+              variant="destructive"
+              :disabled="!suspendReason || suspendLoading"
+              @click="confirmSuspend"
+            >
+              <LoaderCircle v-if="suspendLoading" class="size-4 animate-spin mr-1" />
+              {{ suspendLoading ? 'Suspending...' : 'Confirm Suspension' }}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   </div>
 </template>

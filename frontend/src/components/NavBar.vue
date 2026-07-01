@@ -1,10 +1,42 @@
 <script lang="ts" setup>
+import { ref, onMounted, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { authClient } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Truck, LayoutDashboard, LogOut } from '@lucide/vue'
+import { Truck, LayoutDashboard, LogOut, ShieldCheck } from '@lucide/vue'
 
 const { user, loading, signOut } = useAuth()
+const isVerified = ref<boolean | null>(null)
+
+async function checkVerification() {
+  if (!user.value || user.value.role === 'admin') {
+    isVerified.value = null
+    return
+  }
+  try {
+    const session = await authClient.getSession()
+    const token = (session.data as any)?.session?.token
+    if (!token) return
+
+    const res = await fetch('/api/verification/status', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = await res.json()
+    isVerified.value = data.status === 'approved'
+  } catch {
+    isVerified.value = false
+  }
+}
+
+onMounted(() => {
+  if (user.value) checkVerification()
+})
+
+watch(user, (u) => {
+  if (u) checkVerification()
+  else isVerified.value = null
+})
 </script>
 
 <template>
@@ -29,7 +61,18 @@ const { user, loading, signOut } = useAuth()
       </router-link>
 
       <!-- Right side — User info -->
-      <div v-if="!loading && user" class="flex items-center gap-4">
+      <div v-if="!loading && user" class="flex items-center gap-3">
+        <!-- Get Validated button (drivers & shippers who are not verified) -->
+        <router-link
+          v-if="(user.role === 'driver' || user.role === 'shipper') && isVerified === false"
+          :to="user.role === 'driver' ? '/get-validated' : '/get-validated-shipper'"
+        >
+          <Button variant="outline" size="sm" class="border-primary/50 text-primary hover:bg-primary/5">
+            <ShieldCheck class="size-4 mr-1" />
+            <span class="hidden sm:inline">Get Validated</span>
+          </Button>
+        </router-link>
+
         <div class="text-right hidden sm:block">
           <p class="text-sm font-medium text-foreground capitalize">{{ user.role }}</p>
         </div>

@@ -51,6 +51,7 @@ def user_to_dict(u) -> dict:
         "role": u.role,
         "phone": u.phone,
         "suspended": getattr(u, "suspended", False),
+        "status": getattr(u, "status", "approved"),
         "created_at": u.createdAt.isoformat() if u.createdAt else None,
     }
 
@@ -110,5 +111,79 @@ async def suspend_user(
 
     if body.suspended:
         await db.session.delete_many(where={"userId": user_id})
+
+    return user_to_dict(updated)
+
+
+@router.get("/users/pending/list")
+async def list_pending_users(
+    search: Optional[str] = None,
+    admin: dict = Depends(get_admin_user),
+):
+    where = {"status": "pending"}
+
+    if search:
+        users = await db.user.find_many(where=where)
+        search_lower = search.lower()
+        users = [
+            u for u in users
+            if search_lower in (u.name or "").lower()
+            or search_lower in (u.email or "").lower()
+        ]
+    else:
+        users = await db.user.find_many(where=where, order={"createdAt": "desc"})
+
+    return [user_to_dict(u) for u in users]
+
+
+@router.get("/users/pending/count")
+async def pending_users_count(admin: dict = Depends(get_admin_user)):
+    count = await db.user.count(where={"status": "pending"})
+    return {"count": count}
+
+
+class ReviewRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post("/users/{user_id}/approve")
+async def approve_user(
+    user_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    user = await db.user.find_unique(where={"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.status != "pending":
+        raise HTTPException(status_code=400, detail="User is not pending approval")
+
+    updated = await db.user.update(
+        where={"id": user_id},
+        data={"status": "approved"},
+    )
+    return user_to_dict(updated)
+
+
+@router.post("/users/{user_id}/reject")
+async def reject_user(
+    user_id: str,
+    body: ReviewRequest,
+    admin: dict = Depends(get_admin_user),
+):
+    user = await db.user.find_unique(where={"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.status != "pending":
+        raise HTTPException(status_code=400, detail="User is not pending approval")
+
+    updated = await db.user.update(
+        where={"id": user_id},
+        data={"status": "rejected"},
+    )
+
+    # Revoke any sessions
+    await db.session.delete_many(where={"userId": user_id})
 
     return user_to_dict(updated)

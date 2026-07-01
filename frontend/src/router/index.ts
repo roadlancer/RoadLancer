@@ -4,6 +4,9 @@ import HomeView from '@/views/HomeView.vue'
 import DriverDashboard from '@/views/DriverDashboard.vue'
 import ShipperDashboard from '@/views/ShipperDashboard.vue'
 import AdminDashboard from '@/views/AdminDashboard.vue'
+import PendingUsers from '@/views/PendingUsers.vue'
+import GetValidated from '@/views/GetValidated.vue'
+import AdminVerificationReview from '@/views/AdminVerificationReview.vue'
 import { user, loading, fetchSession } from '@/composables/useAuth'
 
 const router = createRouter({
@@ -34,9 +37,33 @@ const router = createRouter({
       meta: { requiresAuth: true, role: 'shipper' },
     },
     {
+      path: '/get-validated',
+      name: 'get-validated',
+      component: GetValidated,
+      meta: { requiresAuth: true, role: 'driver' },
+    },
+    {
+      path: '/get-validated-shipper',
+      name: 'get-validated-shipper',
+      component: GetValidated,
+      meta: { requiresAuth: true, role: 'shipper' },
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: AdminDashboard,
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/pending',
+      name: 'admin-pending',
+      component: PendingUsers,
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/verifications',
+      name: 'admin-verifications',
+      component: AdminVerificationReview,
       meta: { requiresAuth: true, role: 'admin' },
     },
   ],

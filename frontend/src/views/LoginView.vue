@@ -84,6 +84,20 @@ async function handleSubmit() {
       return
     }
 
+    const userStatus = (user.value as any)?.status
+    if (userStatus === 'pending') {
+      submitError.value = 'Your account is pending approval. Please wait for an admin to approve your registration.'
+      await authClient.signOut()
+      user.value = null
+      return
+    }
+    if (userStatus === 'rejected') {
+      submitError.value = 'Your account has been rejected. Please contact support.'
+      await authClient.signOut()
+      user.value = null
+      return
+    }
+
     if (actualRole === 'driver') {
       router.push('/driver')
     } else if (actualRole === 'admin') {

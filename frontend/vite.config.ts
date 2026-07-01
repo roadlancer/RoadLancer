@@ -28,6 +28,14 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/api/verification': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/me': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   }
 })
