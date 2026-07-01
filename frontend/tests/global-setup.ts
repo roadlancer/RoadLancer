@@ -98,8 +98,8 @@ async function seedUsers() {
     const hashedPassword = await hashPassword(user.password);
     const id = `test_${user.role}_${Date.now()}`;
 
-    psql(`INSERT INTO "user" (id, name, email, email_verified, role, created_at, updated_at)
-          VALUES ('${id}', '${user.name}', '${user.email}', false, '${user.role}', NOW(), NOW())`);
+    psql(`INSERT INTO "user" (id, name, email, email_verified, role, status, created_at, updated_at)
+          VALUES ('${id}', '${user.name}', '${user.email}', false, '${user.role}', 'approved', NOW(), NOW())`);
 
     psql(`INSERT INTO account (id, account_id, provider_id, user_id, password, created_at, updated_at)
           VALUES ('acc_${id}', '${user.email}', 'credential', '${id}', '${hashedPassword}', NOW(), NOW())`);

@@ -40,6 +40,11 @@ async function main() {
 
     const data = await res.json();
     if (data.user) {
+      // Approve default users so they can log in immediately
+      await prisma.user.update({
+        where: { email: userData.email },
+        data: { status: "approved" },
+      });
       console.log(`Created user: ${userData.email} (${userData.role})`);
     } else {
       console.error(`Failed to create ${userData.email}:`, data);

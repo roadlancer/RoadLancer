@@ -44,6 +44,12 @@ export const auth = betterAuth({
         defaultValue: false,
         input: true,
       },
+      status: {
+        type: ["pending", "approved", "rejected"],
+        required: false,
+        defaultValue: "pending",
+        input: true,
+      },
     },
   },
   session: {

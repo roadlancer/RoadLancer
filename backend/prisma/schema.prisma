@@ -16,6 +16,18 @@ enum Role {
   admin
 }
 
+enum UserStatus {
+  pending
+  approved
+  rejected
+}
+
+enum VerificationStatus {
+  pending
+  approved
+  rejected
+}
+
 model user {
   id            String    @id
   name          String
@@ -27,12 +39,14 @@ model user {
   role          Role      @default(driver)
   phone         String?
   suspended     Boolean   @default(false)
+  status        UserStatus @default(approved)
 
   session         session[]
   account         account[]
   shipments       shipments[] @relation("Shipper")
   assignedShipments shipments[] @relation("Driver")
   bids            bids[]
+  verification    user_verifications?
 
   @@map("user")
 }
@@ -142,4 +156,32 @@ model verifications {
   shipment shipments @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
 
   @@map("verifications")
+}
+
+// === User verification (driver/shipper profile verification) ===
+
+model user_verifications {
+  id              String             @id @default(uuid())
+  userId          String             @unique @map("user_id")
+  user            user               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Driver fields
+  licenseNumber   String?            @map("license_number")
+  vehicleType     String?            @map("vehicle_type")
+  vehicleNumber   String?            @map("vehicle_number")
+
+  // Shipper fields
+  businessName    String?            @map("business_name")
+  gstNumber       String?            @map("gst_number")
+  companyAddress  String?            @map("company_address")
+
+  status          VerificationStatus @default(pending)
+  reviewedBy      String?            @map("reviewed_by")
+  reviewedAt      DateTime?          @map("reviewed_at")
+  rejectionReason String?            @map("rejection_reason")
+
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@map("user_verifications")
 }
