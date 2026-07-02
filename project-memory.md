@@ -91,6 +91,236 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Flaky:** 0
 - **Coverage:** Login flow, role validation, session management, admin dashboard, verification flow
 
+### Component/Unit Test Status
+- **Framework:** Vitest + @testing-library/vue + jsdom
+- **Test runner:** `vitest run` (single run) or `vitest` (watch mode)
+- **Location:** `frontend/src/views/__tests__/*.spec.ts` and `frontend/src/**/*.spec.ts`
+- **Current tests:** AdminDashboard (17 tests)
+- **Test setup:** `frontend/vitest.config.ts` (jsdom environment)
+
+---
+
+## 🧪 12. Component/Unit Testing Guide
+
+### Tech Stack
+| Tool | Purpose |
+|------|---------|
+| **Vitest** | Test runner (fast, Vite-native, ESM-first) |
+| **@testing-library/vue** | Render utilities for Vue components |
+| **@testing-library/dom** | DOM queries (`screen.getByText`, `screen.getByRole`, etc.) |
+| **@testing-library/user-event** | Simulate user interactions (click, type, keyboard) |
+| **jsdom** | Browser environment simulation (no real browser needed) |
+| **@testing-library/jest-dom** | Custom matchers (`.toBeInTheDocument()`, `.toBeDisabled()`, etc.) |
+
+### Running Tests
+```bash
+# From frontend/ directory
+npm run test:unit          # Single run (CI mode)
+npm run test:unit:watch    # Watch mode (development)
+```
+
+### Test File Location
+- Co-located: `src/views/__tests__/ComponentName.spec.ts`
+- Or colocated: `src/components/__tests__/ComponentName.spec.ts`
+- Naming: `*.spec.ts` (not `*.test.ts` — Vitest picks up both, but project convention is `.spec.ts`)
+
+### Writing a Component Test
+
+#### Basic Structure
+```typescript
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { screen, fireEvent } from '@testing-library/vue'
+import { render } from '@testing-library/vue'
+import MyComponent from '../MyComponent.vue'
+
+describe('MyComponent', () => {
+  it('renders correctly', () => {
+    render(MyComponent, { props: { title: 'Hello' } })
+    expect(screen.getByText('Hello')).toBeInTheDocument()
+  })
+})
+```
+
+#### Mocking Composables (Critical Pattern)
+Most components depend on composables (`useAuth()`, `useAdminUsers()`, etc.). Mock them at the module level:
+
+```typescript
+import { ref } from 'vue'
+import { vi } from 'vitest'
+
+// Mock ref values — change these in tests to control component state
+const mockUser = ref<any>(null)
+const mockLoading = ref(true)
+
+vi.mock('@/composables/useAuth', () => ({
+  useAuth: () => ({
+    user: mockUser,
+    loading: mockLoading,
+  }),
+}))
+
+// In tests, control state:
+mockUser.value = { id: '1', role: 'admin' }
+mockLoading.value = false
+```
+
+#### Mocking Router
+```typescript
+const mockRouterReplace = vi.fn()
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    replace: mockRouterReplace,
+  }),
+}))
+
+// In tests:
+expect(mockRouterReplace).toHaveBeenCalledWith('/login')
+```
+
+#### Mocking TanStack Query Composables
+```typescript
+const mockUsers = ref<any[]>([])
+const mockLoadingUsers = ref(false)
+const mockRefetchAll = vi.fn()
+
+vi.mock('@/composables/useAdminUsers', () => ({
+  useAdminUsers: () => ({
+    data: mockUsers,
+    isLoading: mockLoadingUsers,
+    refetchAll: mockRefetchAll,
+    suspendMutation: {
+      mutate: vi.fn(),
+      isPending: ref(false),
+    },
+  }),
+}))
+```
+
+### Common Patterns
+
+#### 1. Testing Redirects (watch-based)
+Component uses `watch()` without `immediate: true`. Set mock values AFTER render to trigger the watcher:
+
+```typescript
+it('redirects when auth fails', async () => {
+  renderDashboard()  // renders with default mock state
+
+  // Change state AFTER render to trigger the watch
+  mockAuthLoading.value = false
+  mockAuthUser.value = null
+  await nextTick()  // MUST wait for Vue reactivity
+
+  expect(mockRouterReplace).toHaveBeenCalledWith('/login')
+})
+```
+
+#### 2. Handling Duplicate Text (multiple elements with same text)
+When the same text appears in multiple places (e.g., stats card + tab trigger), use `getAllByText`:
+
+```typescript
+// BAD — throws "Found multiple elements with the text: Drivers"
+expect(screen.getByText('Drivers')).toBeInTheDocument()
+
+// GOOD — checks at least one exists
+expect(screen.getAllByText('Drivers').length).toBeGreaterThanOrEqual(1)
+
+// BETTER — scope to specific container
+const statsCard = screen.getByText('Total Users').closest('[data-slot="card"]')
+expect(within(statsCard).getByText('Drivers')).toBeInTheDocument()
+```
+
+#### 3. Testing User Interactions
+```typescript
+import { fireEvent } from '@testing-library/vue'
+
+it('clicks suspend button and opens dialog', async () => {
+  renderDashboard()
+
+  const row = screen.getByText('Dave Driver').closest('tr')!
+  const button = row.querySelector('button')!
+  await fireEvent.click(button)
+
+  expect(screen.getByText('Suspend User')).toBeInTheDocument()
+})
+```
+
+#### 4. Testing Form Inputs
+```typescript
+it('filters by search query', async () => {
+  renderDashboard()
+
+  const input = screen.getByPlaceholderText('Search users...')
+  await fireEvent.update(input, 'alice')
+
+  expect(screen.getByText('Alice')).toBeInTheDocument()
+  expect(screen.queryByText('Bob')).not.toBeInTheDocument()
+})
+```
+
+#### 5. Testing Async State Changes
+```typescript
+import { ref } from 'vue'
+import { screen } from '@testing-library/vue'
+
+const mockData = ref<any[]>([])
+
+vi.mock('@/composables/useData', () => ({
+  useData: () => ({ data: mockData }),
+}))
+
+it('reacts to data changes', async () => {
+  renderMyComponent()
+
+  // Initial state
+  expect(screen.queryByText('Item 1')).not.toBeInTheDocument()
+
+  // Update mock data
+  mockData.value = [{ id: 1, name: 'Item 1' }]
+
+  // Wait for Vue to re-render
+  await screen.findByText('Item 1')  // auto-waits for element to appear
+})
+```
+
+### Important Gotchas
+
+1. **`watch` without `immediate`**: Values must change AFTER render to trigger. Always `await nextTick()` after changing ref values.
+
+2. **Duplicate text**: `getByText()` throws when multiple elements match. Use `getAllByText()` or scope queries with `within()`.
+
+3. **Mock all dependencies**: Every composable, router, and external module must be mocked. The component will crash without them.
+
+4. **`vi.clearAllMocks()` in `beforeEach`**: Reset mock call counts between tests to avoid state leakage.
+
+5. **Default mock state**: Set realistic defaults in `beforeEach` (e.g., authenticated admin user). Override in individual tests.
+
+6. **`await` for async operations**: Always `await` `fireEvent.*` and `await nextTick()` after ref changes. Use `screen.findByText()` (async) instead of `screen.getByText()` (sync) when waiting for elements to appear.
+
+7. **`screen.queryByText()` vs `screen.getByText()`**: Use `queryByText` when checking something is NOT present (returns `null` instead of throwing).
+
+### Test Helper: renderDashboard
+A shared helper wraps `@testing-library/vue`'s `render` with common stubs:
+
+```typescript
+// frontend/src/views/__tests__/renderDashboard.ts
+import { render } from '@testing-library/vue'
+import AdminDashboard from '../AdminDashboard.vue'
+
+export function renderDashboard(options = {}) {
+  return render(AdminDashboard, {
+    ...options,
+    global: {
+      ...options.global,
+      stubs: {
+        RouterLink: { template: '<a><slot /></a>' },
+        ...(options.global?.stubs || {}),
+      },
+    },
+  })
+}
+```
+
 ---
 
 ## 📂 4. Reference Files
@@ -419,6 +649,8 @@ export function useVerificationStatus() {
 | `frontend/src/views/HomeView.vue` | Dashboard — avatar, role badge, info cards |
 | `frontend/src/views/DriverDashboard.vue` | Driver-only page |
 | `frontend/src/views/ShipperDashboard.vue` | Shipper-only page |
+| `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (17 tests) |
+| `frontend/src/views/__tests__/renderDashboard.ts` | Shared test helper — wraps render with common stubs |
 
 ---
 
@@ -452,3 +684,26 @@ npm run test:e2e           # Run all tests (headless)
 npm run test:e2e:headed    # Run with visible browser
 npm run test:e2e:ui        # Open Playwright UI
 ```
+
+### Component/Unit Testing Patterns
+
+**When to use:**
+- Testing individual Vue components in isolation
+- Verifying UI renders correctly with different props/state
+- Testing user interactions (clicks, form inputs, navigation)
+- Mocking composables, router, and external dependencies
+
+**Key patterns (see Section 12 for full guide):**
+- Mock composables with `vi.mock()` at module level — control state via exported `ref()` values
+- Mock router with `vi.mock('vue-router')` — assert `router.replace()` calls
+- Use `getAllByText()` when text appears in multiple elements (stats cards + tab triggers)
+- Set mock values AFTER `render()` to trigger `watch` without `immediate`
+- Always `await nextTick()` after changing reactive refs
+
+**Quick commands:**
+```bash
+npm run test:unit          # Single run
+npm run test:unit:watch    # Watch mode
+```
+
+**File location:** `frontend/src/views/__tests__/*.spec.ts`
