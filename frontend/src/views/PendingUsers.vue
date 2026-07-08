@@ -179,8 +179,10 @@ watch([user, loading], ([u, l]) => {
                 <div>
                   <p class="font-medium">{{ u.name }}</p>
                   <p class="text-sm text-muted-foreground">{{ u.email }}</p>
-                  <div class="flex items-center gap-2 mt-1">
+                  <div class="flex flex-wrap items-center gap-2 mt-1">
                     <Badge variant="secondary" class="capitalize text-xs">{{ u.role }}</Badge>
+                    <Badge v-if="u.verification_status === 'pending'" class="bg-amber-100 text-amber-800 border border-amber-200 text-[10px]">Docs Submitted</Badge>
+                    <Badge v-else-if="u.verification_status === 'none'" variant="outline" class="text-muted-foreground text-[10px]">No Docs Yet</Badge>
                     <span v-if="u.phone" class="text-xs text-muted-foreground">{{ u.phone }}</span>
                     <span class="text-xs text-muted-foreground">
                       Registered {{ new Date(u.created_at!).toLocaleDateString() }}
@@ -188,7 +190,12 @@ watch([user, loading], ([u, l]) => {
                   </div>
                 </div>
               </div>
-              <div class="flex items-center gap-2 sm:ml-4">
+              <div class="flex flex-wrap items-center gap-2 sm:ml-4">
+                <router-link v-if="u.verification_status === 'pending'" to="/admin/verifications" class="inline-block">
+                  <Button variant="outline" size="sm" class="border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-semibold text-xs h-8">
+                    Review Docs
+                  </Button>
+                </router-link>
                 <Button
                   variant="default"
                   size="sm"

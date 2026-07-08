@@ -20,14 +20,13 @@ export function useAdminUsers() {
 
   const queryKey = computed(() => [
     'admin-users',
-    { search: searchQuery.value, role: activeTab.value },
+    { search: searchQuery.value },
   ])
 
   const query = useQuery({
     queryKey,
     queryFn: async () => {
       const params: Record<string, string> = {}
-      if (activeTab.value !== 'all') params.role = activeTab.value
       if (searchQuery.value) params.search = searchQuery.value
       const { data } = await api.get('/admin/users', { params })
       return data as UserRecord[]
@@ -50,6 +49,14 @@ export function useAdminUsers() {
     },
   })
 
+  const verifiedCount = useQuery({
+    queryKey: ['admin-verification-count', 'approved'],
+    queryFn: async () => {
+      const { data } = await api.get('/verification/admin/count', { params: { status: 'approved' } })
+      return data.count as number
+    },
+  })
+
   const suspendMutation = useMutation({
     mutationFn: async ({ userId, suspended }: { userId: string; suspended: boolean }) => {
       const { data } = await api.post(`/admin/users/${userId}/suspend`, { suspended })
@@ -64,6 +71,7 @@ export function useAdminUsers() {
     query.refetch()
     pendingCount.refetch()
     rejectedCount.refetch()
+    verifiedCount.refetch()
   }
 
   return {
@@ -72,6 +80,7 @@ export function useAdminUsers() {
     activeTab,
     pendingCount,
     rejectedCount,
+    verifiedCount,
     suspendMutation,
     refetchAll,
   }

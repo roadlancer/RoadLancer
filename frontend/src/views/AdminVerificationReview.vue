@@ -1,18 +1,17 @@
 <script lang="ts" setup>
-import { ref, computed, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useVerificationList } from '@/composables/useVerificationList'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import VerificationDetailDialog from '@/components/VerificationDetailDialog.vue'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Skeleton } from '@/components/ui/skeleton'
-import { LoaderCircle, CheckCircle2, XCircle, Clock, Search, ArrowLeft, ShieldCheck, User, Mail, Phone, Building2, CreditCard, MapPin, Truck, FileText, Eye } from '@lucide/vue'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Search, ArrowLeft, ShieldCheck, Clock, CheckCircle2, XCircle, Eye } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()
@@ -24,12 +23,26 @@ const {
   activeTab,
   approveMutation,
   rejectMutation,
+  resetPendingMutation,
 } = useVerificationList()
 
 const selectedVerification = ref<any>(null)
 const showDetailDialog = ref(false)
 const showRejectDialog = ref(false)
 const rejectReason = ref('')
+const customRejectMessage = ref('')
+
+const verificationRejectReasons = [
+  'Invalid or expired identity documents',
+  'Documents are unclear or unreadable',
+  'Information does not match registration details',
+  'Suspected fraudulent submission',
+  'Missing required documents',
+  'Vehicle registration documents are invalid',
+  'Business registration not verifiable',
+  'Does not meet platform eligibility requirements',
+  'Other',
+]
 
 watch([user, loading], ([u, l]) => {
   if (!l) {
@@ -38,12 +51,12 @@ watch([user, loading], ([u, l]) => {
   }
 })
 
-function viewDetails(v: any) {
-  selectedVerification.value = v
+async function viewDetails(v: any) {
+  selectedVerification.value = { ...v }
   showDetailDialog.value = true
 }
 
-function approveVerification(id: string) {
+function handleApprove(id: string) {
   approveMutation.mutate(id, {
     onSuccess: () => { showDetailDialog.value = false },
   })
@@ -51,13 +64,16 @@ function approveVerification(id: string) {
 
 function openRejectDialog() {
   rejectReason.value = ''
+  customRejectMessage.value = ''
   showRejectDialog.value = true
 }
 
 function confirmReject() {
   if (!selectedVerification.value) return
+  const finalReason = rejectReason.value === 'Other' ? customRejectMessage.value : rejectReason.value
+  if (!finalReason) return
   rejectMutation.mutate(
-    { id: selectedVerification.value.id, reason: rejectReason.value },
+    { id: selectedVerification.value.id, reason: finalReason },
     {
       onSuccess: () => {
         showRejectDialog.value = false
@@ -67,58 +83,69 @@ function confirmReject() {
   )
 }
 
-function statusColor(status: string) {
-  if (status === 'approved') return 'bg-green-100 text-green-800'
-  if (status === 'rejected') return 'bg-red-100 text-red-800'
-  return 'bg-yellow-100 text-yellow-800'
+function handleResetPending(id: string) {
+  resetPendingMutation.mutate(id)
+  showDetailDialog.value = false
 }
 
 function roleBadgeColor(role: string) {
-  if (role === 'driver') return 'bg-blue-100 text-blue-800'
-  if (role === 'shipper') return 'bg-purple-100 text-purple-800'
-  return 'bg-gray-100 text-gray-800'
+  if (role === 'driver') return 'bg-blue-100 text-blue-800 border-blue-200'
+  if (role === 'shipper') return 'bg-purple-100 text-purple-800 border-purple-200'
+  return 'bg-gray-100 text-gray-800 border-gray-200'
+}
+
+function statusColor(status: string) {
+  if (status === 'approved') return 'bg-green-100 text-green-800 border-green-200'
+  if (status === 'rejected') return 'bg-red-100 text-red-800 border-red-200'
+  if (status === 'pending') return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+  return 'bg-gray-100 text-gray-800 border-gray-200'
 }
 </script>
 
 <template>
-  <div class="flex-1 p-8 bg-background">
-    <div class="max-w-5xl mx-auto">
-      <Button variant="ghost" size="sm" class="mb-4" @click="router.push('/admin')">
+  <div class="flex-1 p-6 md:p-8 bg-background">
+    <div class="max-w-6xl mx-auto">
+      <a href="/admin" class="inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium h-8 px-3 hover:bg-muted hover:text-foreground mb-4 no-underline">
         <ArrowLeft class="size-4 mr-2" />
         Back to Dashboard
-      </Button>
+      </a>
 
-      <div class="mb-6">
-        <h1 class="text-3xl font-bold text-foreground">Verification Reviews</h1>
-        <p class="text-muted-foreground mt-1">Review and approve user verification submissions.</p>
+      <div class="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 class="text-3xl font-bold text-foreground flex items-center gap-2">
+            <ShieldCheck class="size-8 text-primary" />
+            Verification Reviews
+          </h1>
+          <p class="text-muted-foreground mt-1">Review applicant profiles, inspect attached credentials, and approve access.</p>
+        </div>
       </div>
 
       <div class="flex flex-col sm:flex-row gap-4 mb-6">
         <div class="relative flex-1">
-          <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             v-model="searchQuery"
-            placeholder="Search by name or email..."
-            class="pl-9"
+            placeholder="Search applicants by name or email..."
+            class="pl-9 h-10"
           />
         </div>
       </div>
 
       <Tabs v-model="activeTab" class="mb-6">
-        <TabsList>
-          <TabsTrigger value="pending">
-            <Clock class="size-4 mr-1" />
-            Pending
+        <TabsList class="h-11 p-1">
+          <TabsTrigger value="pending" class="px-4">
+            <Clock class="size-4 mr-1.5" />
+            Pending Review
           </TabsTrigger>
-          <TabsTrigger value="approved">
-            <CheckCircle2 class="size-4 mr-1" />
+          <TabsTrigger value="approved" class="px-4">
+            <CheckCircle2 class="size-4 mr-1.5" />
             Approved
           </TabsTrigger>
-          <TabsTrigger value="rejected">
-            <XCircle class="size-4 mr-1" />
+          <TabsTrigger value="rejected" class="px-4">
+            <XCircle class="size-4 mr-1.5" />
             Rejected
           </TabsTrigger>
-          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="all" class="px-4">All Submissions</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -135,157 +162,94 @@ function roleBadgeColor(role: string) {
             <div class="flex items-center gap-3">
               <Skeleton class="h-6 w-16" />
               <Skeleton class="h-6 w-20" />
-              <Skeleton class="h-8 w-8" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <div v-else-if="!verifications || verifications.length === 0" class="text-center py-12">
-        <ShieldCheck class="size-12 mx-auto text-muted-foreground/50 mb-4" />
-        <p class="text-muted-foreground">No verification submissions found.</p>
+      <div v-else-if="!verifications || verifications.length === 0" class="text-center py-16 bg-muted/20 rounded-xl border border-dashed">
+        <ShieldCheck class="size-14 mx-auto text-muted-foreground/40 mb-3" />
+        <p class="text-lg font-medium text-foreground">No verification records found</p>
+        <p class="text-sm text-muted-foreground mt-1">Submissions matching your filter will appear here.</p>
       </div>
 
       <div v-else class="space-y-3">
         <Card
           v-for="v in verifications"
           :key="v.id"
-          class="hover:shadow-md transition-shadow cursor-pointer"
+          class="hover:shadow-md transition-shadow cursor-pointer border"
           @click="viewDetails(v)"
         >
           <CardContent class="p-4 flex items-center justify-between">
             <div class="flex items-center gap-4">
-              <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <span class="text-sm font-semibold text-primary">
+              <div class="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                <span class="text-base font-bold text-primary">
                   {{ (v.userName || '?').charAt(0).toUpperCase() }}
                 </span>
               </div>
               <div>
-                <p class="font-medium text-foreground">{{ v.userName }}</p>
-                <p class="text-sm text-muted-foreground">{{ v.userEmail }}</p>
+                <p class="font-semibold text-foreground flex items-center gap-2">
+                  {{ v.userName }}
+                  <span v-if="v.fullName" class="text-xs font-normal text-muted-foreground">({{ v.fullName }})</span>
+                </p>
+                <p class="text-sm text-muted-foreground">{{ v.userEmail }} &bull; Submitted {{ v.createdAt ? v.createdAt.split('T')[0] : 'Recently' }}</p>
               </div>
             </div>
             <div class="flex items-center gap-3">
-              <Badge :class="roleBadgeColor(v.userRole)" class="capitalize">
+              <Badge :class="roleBadgeColor(v.userRole)" class="capitalize px-3 py-1 font-medium border">
                 {{ v.userRole }}
               </Badge>
-              <Badge :class="statusColor(v.status)" class="capitalize">
+              <Badge :class="statusColor(v.status)" class="capitalize px-3 py-1 font-medium border">
                 {{ v.status }}
               </Badge>
-              <Button variant="ghost" size="sm">
-                <Eye class="size-4" />
+              <Button variant="outline" size="sm" class="gap-1.5">
+                <Eye class="size-3.5" /> View Application
               </Button>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Dialog v-model:open="showDetailDialog">
-        <DialogContent class="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Verification Details</DialogTitle>
-            <DialogDescription>
-              Review the submitted verification information.
-            </DialogDescription>
-          </DialogHeader>
+      <!-- Verification Details Dialog -->
+      <VerificationDetailDialog
+        :open="showDetailDialog"
+        :verification="selectedVerification"
+        :show-actions="true"
+        @update:open="showDetailDialog = $event"
+        @approve="handleApprove"
+        @reject="openRejectDialog"
+        @reset-pending="handleResetPending"
+      />
 
-          <div v-if="selectedVerification" class="space-y-4">
-            <div class="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <span class="text-sm font-semibold text-primary">
-                  {{ (selectedVerification.userName || '?').charAt(0).toUpperCase() }}
-                </span>
-              </div>
-              <div>
-                <p class="font-medium">{{ selectedVerification.userName }}</p>
-                <p class="text-sm text-muted-foreground">{{ selectedVerification.userEmail }}</p>
-              </div>
-              <Badge :class="roleBadgeColor(selectedVerification.userRole)" class="capitalize ml-auto">
-                {{ selectedVerification.userRole }}
-              </Badge>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3 text-sm">
-              <template v-if="selectedVerification.userRole === 'driver'">
-                <div class="space-y-1">
-                  <p class="text-muted-foreground flex items-center gap-1"><CreditCard class="size-3" /> License Number</p>
-                  <p class="font-medium">{{ selectedVerification.licenseNumber || '-' }}</p>
-                </div>
-                <div class="space-y-1">
-                  <p class="text-muted-foreground flex items-center gap-1"><Truck class="size-3" /> Vehicle Type</p>
-                  <p class="font-medium">{{ selectedVerification.vehicleType || '-' }}</p>
-                </div>
-                <div class="space-y-1 col-span-2">
-                  <p class="text-muted-foreground flex items-center gap-1"><Truck class="size-3" /> Vehicle Number</p>
-                  <p class="font-medium">{{ selectedVerification.vehicleNumber || '-' }}</p>
-                </div>
-              </template>
-
-              <template v-if="selectedVerification.userRole === 'shipper'">
-                <div class="space-y-1 col-span-2">
-                  <p class="text-muted-foreground flex items-center gap-1"><Building2 class="size-3" /> Business Name</p>
-                  <p class="font-medium">{{ selectedVerification.businessName || '-' }}</p>
-                </div>
-                <div class="space-y-1">
-                  <p class="text-muted-foreground flex items-center gap-1"><CreditCard class="size-3" /> GST Number</p>
-                  <p class="font-medium">{{ selectedVerification.gstNumber || '-' }}</p>
-                </div>
-                <div class="space-y-1">
-                  <p class="text-muted-foreground flex items-center gap-1"><MapPin class="size-3" /> Company Address</p>
-                  <p class="font-medium">{{ selectedVerification.companyAddress || '-' }}</p>
-                </div>
-              </template>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <p class="text-sm text-muted-foreground">Status:</p>
-              <Badge :class="statusColor(selectedVerification.status)" class="capitalize">
-                {{ selectedVerification.status }}
-              </Badge>
-            </div>
-
-            <div v-if="selectedVerification.rejectionReason" class="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
-              <p class="text-sm text-destructive font-medium">Rejection Reason:</p>
-              <p class="text-sm text-destructive/80">{{ selectedVerification.rejectionReason }}</p>
-            </div>
-          </div>
-
-          <DialogFooter v-if="selectedVerification?.status === 'pending'">
-            <Button
-              variant="outline"
-              @click="openRejectDialog"
-              :disabled="approveMutation.isPending.value || rejectMutation.isPending.value"
-            >
-              <XCircle class="size-4 mr-1" />
-              Reject
-            </Button>
-            <Button
-              @click="approveVerification(selectedVerification?.id)"
-              :disabled="approveMutation.isPending.value || rejectMutation.isPending.value"
-            >
-              <LoaderCircle v-if="approveMutation.isPending.value" class="size-4 animate-spin" />
-              <CheckCircle2 v-else class="size-4 mr-1" />
-              Approve
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      <!-- Rejection Reason Dialog -->
       <Dialog v-model:open="showRejectDialog">
-        <DialogContent>
+        <DialogContent class="sm:max-w-lg w-[90vw] p-6">
           <DialogHeader>
-            <DialogTitle>Reject Verification</DialogTitle>
+            <DialogTitle>Decline Application</DialogTitle>
             <DialogDescription>
-              Optionally provide a reason for rejection.
+              Select the primary non-compliance reason for rejecting this verification request.
             </DialogDescription>
           </DialogHeader>
-          <div class="space-y-4">
-            <div class="space-y-2">
-              <Label for="rejectReason">Reason (optional)</Label>
-              <Input
-                id="rejectReason"
-                v-model="rejectReason"
-                placeholder="e.g., Invalid documents, unclear photos..."
+          <div class="space-y-4 py-2">
+            <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+              <label
+                v-for="reason in verificationRejectReasons"
+                :key="reason"
+                class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors"
+                :class="rejectReason === reason ? 'border-destructive bg-destructive/5' : 'border-border hover:border-destructive/40'"
+              >
+                <input type="radio" :value="reason" v-model="rejectReason" class="size-4 accent-destructive" />
+                <span class="text-sm font-medium">{{ reason }}</span>
+              </label>
+            </div>
+            <div v-if="rejectReason === 'Other'" class="space-y-2">
+              <Label for="customRejectMessage">Specific non-compliance explanation</Label>
+              <textarea
+                id="customRejectMessage"
+                v-model="customRejectMessage"
+                placeholder="Detail exact document or verification discrepancy..."
+                rows="3"
+                class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
               />
             </div>
           </div>
@@ -294,12 +258,23 @@ function roleBadgeColor(role: string) {
             <Button
               variant="destructive"
               @click="confirmReject"
-              :disabled="rejectMutation.isPending.value"
+              :disabled="!rejectReason || (rejectReason === 'Other' && !customRejectMessage) || rejectMutation.isPending.value"
             >
-              <LoaderCircle v-if="rejectMutation.isPending.value" class="size-4 animate-spin" />
-              Reject
+              Confirm Rejection
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <!-- Lightbox Dialog -->
+      <Dialog :open="!!lightboxImage" @update:open="lightboxImage = null">
+        <DialogContent class="sm:max-w-4xl md:max-w-5xl lg:max-w-6xl w-[95vw] max-h-[94vh] p-4 bg-background">
+          <DialogHeader>
+            <DialogTitle>{{ lightboxTitle }}</DialogTitle>
+          </DialogHeader>
+          <div class="flex items-center justify-center max-h-[75vh] overflow-hidden bg-muted/30 rounded-lg p-2">
+            <img v-if="lightboxImage" :src="lightboxImage" class="max-w-full max-h-[72vh] object-contain rounded" />
+          </div>
         </DialogContent>
       </Dialog>
     </div>

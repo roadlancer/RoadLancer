@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { LoaderCircle, Mail, Lock, Phone, AlertCircle, Truck, Shield } from '@lucide/vue'
+import { LoaderCircle, Mail, Lock, Phone, AlertCircle, Truck, Shield, Eye, EyeOff } from '@lucide/vue'
 
 const router = useRouter()
 const { fetchSession } = useAuth()
@@ -21,6 +21,7 @@ const { fetchSession } = useAuth()
 const submitError = ref('')
 const submitting = ref(false)
 const activeTab = ref('email')
+const showPassword = ref(false)
 
 const form = reactive({ email: '', phone: '', password: '', role: 'driver' as 'driver' | 'shipper' | 'admin' })
 const errors = reactive({ email: '', phone: '', password: '' })
@@ -85,12 +86,6 @@ async function handleSubmit() {
     }
 
     const userStatus = (user.value as any)?.status
-    if (userStatus === 'pending') {
-      submitError.value = 'Your account is pending approval. Please wait for an admin to approve your registration.'
-      await authClient.signOut()
-      user.value = null
-      return
-    }
     if (userStatus === 'rejected') {
       submitError.value = 'Your account has been rejected. Please contact support.'
       await authClient.signOut()
@@ -155,7 +150,7 @@ async function handleSubmit() {
                   <div class="space-y-2">
                     <Label for="email">Email</Label>
                     <div class="relative">
-                      <Mail class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Mail class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
                       <Input
                         id="email"
                         v-model="form.email"
@@ -178,19 +173,28 @@ async function handleSubmit() {
                       <a href="#" class="text-sm text-primary hover:text-primary/80">Forgot password?</a>
                     </div>
                     <div class="relative">
-                      <Lock class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Lock class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
                       <Input
                         id="password"
                         v-model="form.password"
-                        type="password"
+                        :type="showPassword ? 'text' : 'password'"
                         required
                         placeholder="Enter your password"
                         autocomplete="new-password"
-                        class="pl-9"
+                        class="pl-9 pr-9"
                         :class="errors.password ? 'border-destructive focus-visible:ring-destructive/20' : ''"
                         @input="handleInput('password')"
                         @blur="handleBlur('password')"
                       />
+                      <button
+                        type="button"
+                        class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none p-1"
+                        @click="showPassword = !showPassword"
+                        :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                      >
+                        <EyeOff v-if="showPassword" class="size-4" />
+                        <Eye v-else class="size-4" />
+                      </button>
                     </div>
                     <p v-if="errors.password" class="text-sm text-destructive">{{ errors.password }}</p>
                   </div>
@@ -248,7 +252,7 @@ async function handleSubmit() {
                   <div class="space-y-2">
                     <Label for="phone">Phone Number</Label>
                     <div class="relative">
-                      <Phone class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Phone class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
                       <Input
                         id="phone"
                         v-model="form.phone"
@@ -271,19 +275,28 @@ async function handleSubmit() {
                       <a href="#" class="text-sm text-primary hover:text-primary/80">Forgot password?</a>
                     </div>
                     <div class="relative">
-                      <Lock class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                      <Lock class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
                       <Input
                         id="password-phone"
                         v-model="form.password"
-                        type="password"
+                        :type="showPassword ? 'text' : 'password'"
                         required
                         placeholder="Enter your password"
                         autocomplete="new-password"
-                        class="pl-9"
+                        class="pl-9 pr-9"
                         :class="errors.password ? 'border-destructive focus-visible:ring-destructive/20' : ''"
                         @input="handleInput('password')"
                         @blur="handleBlur('password')"
                       />
+                      <button
+                        type="button"
+                        class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none p-1"
+                        @click="showPassword = !showPassword"
+                        :aria-label="showPassword ? 'Hide password' : 'Show password'"
+                      >
+                        <EyeOff v-if="showPassword" class="size-4" />
+                        <Eye v-else class="size-4" />
+                      </button>
                     </div>
                     <p v-if="errors.password" class="text-sm text-destructive">{{ errors.password }}</p>
                   </div>
@@ -366,7 +379,7 @@ async function handleSubmit() {
           <CardFooter class="justify-center">
             <p class="text-sm text-muted-foreground">
               Don't have an account?
-              <a href="#" class="text-primary hover:text-primary/80 font-medium">Sign up</a>
+              <RouterLink to="/register" class="text-primary hover:text-primary/80 font-semibold ml-1">Sign up</RouterLink>
             </p>
           </CardFooter>
         </Card>

@@ -1,6 +1,14 @@
+import os
 from prisma import Prisma
 
-db = Prisma()
+db = Prisma(
+    datasource={
+        'url': os.environ.get(
+            'DATABASE_URL',
+            'postgresql://postgres:postgres@localhost:5433/roadlancer',
+        )
+    }
+)
 
 
 async def connect_db():
