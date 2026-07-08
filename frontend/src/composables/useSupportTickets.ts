@@ -128,8 +128,14 @@ export function useSupportMutations() {
       body: string
       priority?: string
       source?: string
+      secret?: string
     }) => {
-      const { data } = await api.post('/support/inbound-email', payload)
+      const secret = payload.secret || import.meta.env.VITE_SUPPORT_WEBHOOK_SECRET || "roadlancer-webhook-secret-2026"
+      const { data } = await api.post(
+        '/support/inbound-email',
+        { ...payload, secret },
+        { headers: { 'x-webhook-secret': secret } }
+      )
       return data as {
         success: boolean
         ticket_number: string

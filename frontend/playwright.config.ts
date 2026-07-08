@@ -50,6 +50,7 @@ export default defineConfig({
       cwd: "../backend",
       env: {
         DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/roadlancer_test",
+        SUPPORT_WEBHOOK_SECRET: "roadlancer-webhook-secret-2026",
       },
       timeout: 15000,
     },

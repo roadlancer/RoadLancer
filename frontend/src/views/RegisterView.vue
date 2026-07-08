@@ -103,7 +103,7 @@ async function handleSubmit() {
       return
     }
 
-    await fetchSession()
+    await fetchSession(true)
     isSuccess.value = true
   } catch (err: any) {
     submitError.value = err?.message || 'Something went wrong during registration. Please try again.'

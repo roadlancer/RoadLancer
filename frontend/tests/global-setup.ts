@@ -76,13 +76,18 @@ async function runAuthMigrations() {
 }
 
 async function pushBackendSchema() {
+  console.log("→ Generating Prisma Python client...");
+  execSync("python -m prisma generate", {
+    cwd: path.resolve(__dirname, "../../backend"),
+    stdio: "pipe",
+  });
   console.log("→ Pushing backend schema (business tables)...");
   execSync("python -m prisma db push --accept-data-loss", {
     cwd: path.resolve(__dirname, "../../backend"),
     stdio: "pipe",
     env: { ...process.env, DATABASE_URL: TEST_DB_URL },
   });
-  console.log("  ✓ Backend schema pushed");
+  console.log("  ✓ Backend schema pushed & client generated");
 }
 
 async function seedUsers() {

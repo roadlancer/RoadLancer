@@ -1,7 +1,8 @@
+import os
 import random
 import time
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from app.database import db
 from app.routes.auth import get_current_user
@@ -17,6 +18,7 @@ class InboundEmailRequest(BaseModel):
     body: str
     priority: Optional[str] = "normal"
     source: Optional[str] = "email"
+    secret: Optional[str] = None
 
 
 class CreateTicketRequest(BaseModel):
@@ -78,6 +80,9 @@ async def generate_unique_ticket_number() -> str:
             if not existing:
                 return ticket_num
         except Exception as e:
+            import traceback
+            print(f"❌ [generate_unique_ticket_number] Error on {ticket_num}: {e}")
+            traceback.print_exc()
             err_msg = str(e)
             if "relation \"support_tickets\" does not exist" in err_msg or "table \"support_tickets\" does not exist" in err_msg.lower():
                 raise HTTPException(
@@ -90,11 +95,27 @@ async def generate_unique_ticket_number() -> str:
 
 
 @router.post("/inbound-email")
-async def simulate_inbound_email(req: InboundEmailRequest):
+async def simulate_inbound_email(
+    req: InboundEmailRequest,
+    x_webhook_secret: Optional[str] = Header(None, alias="x-webhook-secret"),
+    authorization: Optional[str] = Header(None),
+):
     """
     Webhook endpoint simulating an inbound email parser (like SendGrid/Mailgun/Postmark).
     Receives email payload, links to user account if email matches, and creates support ticket.
+    Requires a valid webhook secret matching SUPPORT_WEBHOOK_SECRET loaded from .env.
     """
+    expected_secret = os.getenv("SUPPORT_WEBHOOK_SECRET", "roadlancer-webhook-secret-2026")
+    provided_secret = req.secret or x_webhook_secret
+    if authorization and authorization.startswith("Bearer "):
+        provided_secret = provided_secret or authorization.replace("Bearer ", "").strip()
+
+    if provided_secret != expected_secret:
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Invalid or missing webhook secret ('x-webhook-secret' header or 'secret' field)",
+        )
+
     if not req.from_email or not req.subject or not req.body:
         raise HTTPException(
             status_code=400,
@@ -107,35 +128,51 @@ async def simulate_inbound_email(req: InboundEmailRequest):
             detail="Prisma client attribute 'support_tickets' missing. Please run 'python -m prisma generate' inside the backend folder and restart your FastAPI server.",
         )
 
-    try:
-        # Check if sender matches an existing user
-        user = await db.user.find_unique(where={"email": req.from_email.lower()})
-        user_id = user.id if user else None
-        sender_name = req.from_name or (user.name if user else req.from_email)
+    last_exc = None
+    for _attempt in range(3):
+        try:
+            # Check if sender matches an existing user
+            user = await db.user.find_unique(where={"email": req.from_email.lower()})
+            user_id = user.id if user else None
+            sender_name = req.from_name or (user.name if user else req.from_email)
 
-        ticket_number = await generate_unique_ticket_number()
+            ticket_number = await generate_unique_ticket_number()
 
-        ticket = await db.support_tickets.create(
-            data={
-                "ticketNumber": ticket_number,
-                "senderEmail": req.from_email.lower(),
-                "senderName": sender_name,
-                "subject": req.subject,
-                "message": req.body,
-                "priority": req.priority or "normal",
-                "source": req.source or "email",
-                "userId": user_id,
-                "status": "open",
-            }
-        )
-    except Exception as e:
-        err_msg = str(e)
-        if "relation \"support_tickets\" does not exist" in err_msg or "table \"support_tickets\" does not exist" in err_msg.lower():
-            raise HTTPException(
-                status_code=500,
-                detail="Table 'support_tickets' does not exist in PostgreSQL. Please run 'npx prisma db push --schema=prisma/schema.prisma' and 'python -m prisma generate' inside the backend directory.",
+            ticket = await db.support_tickets.create(
+                data={
+                    "ticketNumber": ticket_number,
+                    "senderEmail": req.from_email.lower(),
+                    "senderName": sender_name,
+                    "subject": req.subject,
+                    "message": req.body,
+                    "priority": req.priority or "normal",
+                    "source": req.source or "email",
+                    "userId": user_id,
+                    "status": "open",
+                }
             )
-        raise HTTPException(status_code=500, detail=f"Database error while creating ticket: {err_msg}")
+            break
+        except Exception as e:
+            import traceback
+            last_exc = e
+            err_msg = str(e)
+            # Fatal schema errors — don't retry
+            if "relation \"support_tickets\" does not exist" in err_msg or "table \"support_tickets\" does not exist" in err_msg.lower():
+                raise HTTPException(
+                    status_code=500,
+                    detail="Table 'support_tickets' does not exist in PostgreSQL. Please run 'npx prisma db push --schema=prisma/schema.prisma' and 'python -m prisma generate' inside the backend directory.",
+                )
+            # Retry on transient Prisma engine errors (AttributeError from malformed error response)
+            if isinstance(e, AttributeError) and _attempt < 2:
+                import asyncio
+                print(f"⚠️ [simulate_inbound_email] Transient Prisma error (attempt {_attempt + 1}/3): {e}")
+                await asyncio.sleep(0.5 * (_attempt + 1))
+                continue
+            print(f"❌ [simulate_inbound_email] Exception during ticket creation: {e}")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Database error while creating ticket: {err_msg} | {traceback.format_exc().splitlines()[-1] if traceback.format_exc() else ''}")
+    else:
+        raise HTTPException(status_code=500, detail=f"Database error after retries: {last_exc}")
 
     user_map = {user_id: user} if user else {}
     return {

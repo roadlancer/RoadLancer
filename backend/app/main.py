@@ -18,6 +18,12 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
+    # Warm up the Prisma query engine so the first real request doesn't fail
+    try:
+        from app.database import db
+        await db.user.find_first(take=1)
+    except Exception:
+        pass
     yield
     await disconnect_db()
 
