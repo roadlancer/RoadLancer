@@ -9,6 +9,7 @@ const credentials: Record<Role, { email: string; password: string }> = {
 };
 
 export async function loginAs(page: Page, role: Role) {
+  await page.context().clearCookies();
   await page.goto("/login");
   await page.getByRole("radio", { name: new RegExp(role, "i") }).click();
   await page.getByRole("textbox", { name: /email/i }).fill(credentials[role].email);

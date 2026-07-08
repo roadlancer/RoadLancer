@@ -75,16 +75,9 @@ async function handleSubmit() {
       return
     }
 
-    await fetchSession()
+    await fetchSession(true)
 
     const actualRole = user.value?.role
-    if (actualRole !== form.role) {
-      submitError.value = 'Invalid credentials. Please try again.'
-      await authClient.signOut()
-      user.value = null
-      return
-    }
-
     const userStatus = (user.value as any)?.status
     if (userStatus === 'rejected') {
       submitError.value = 'Your account has been rejected. Please contact support.'

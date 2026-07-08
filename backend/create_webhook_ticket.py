@@ -1,9 +1,12 @@
 import httpx
+import os
 import sys
 
 def create_ticket():
     url = "http://localhost:8000/api/support/inbound-email"
+    secret = os.getenv("SUPPORT_WEBHOOK_SECRET", "roadlancer-webhook-secret-2026")
     payload = {
+        "secret": secret,
         "from_email": "driver@roadlancer.com",
         "from_name": "Dave Driver (Webhook Test)",
         "subject": "[INBOUND WEBHOOK] Vehicle Registration RC Update Request",
@@ -14,7 +17,7 @@ def create_ticket():
 
     print(f"🚀 Sending Inbound Webhook payload to {url}...")
     try:
-        r = httpx.post(url, json=payload, timeout=10.0)
+        r = httpx.post(url, json=payload, headers={"x-webhook-secret": secret}, timeout=10.0)
         print("Status Code:", r.status_code)
         
         try:

@@ -20,19 +20,7 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
-      '/api/admin': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/api/shipments': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/api/verification': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/api/me': {
+      '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
