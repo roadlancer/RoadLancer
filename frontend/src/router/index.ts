@@ -1,12 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
+import RegisterView from '@/views/RegisterView.vue'
 import HomeView from '@/views/HomeView.vue'
 import DriverDashboard from '@/views/DriverDashboard.vue'
 import ShipperDashboard from '@/views/ShipperDashboard.vue'
 import AdminDashboard from '@/views/AdminDashboard.vue'
-import PendingUsers from '@/views/PendingUsers.vue'
+import AdminProfile from '@/views/AdminProfile.vue'
 import GetValidated from '@/views/GetValidated.vue'
 import AdminVerificationReview from '@/views/AdminVerificationReview.vue'
+import ShipmentDetailView from '@/views/ShipmentDetailView.vue'
+import UserProfile from '@/views/UserProfile.vue'
+import AdminSupportDesk from '@/views/AdminSupportDesk.vue'
 import { user, loading, fetchSession } from '@/composables/useAuth'
 
 const router = createRouter({
@@ -16,12 +20,18 @@ const router = createRouter({
       path: '/',
       name: 'home',
       component: HomeView,
-      meta: { requiresAuth: true },
+      meta: {},
     },
     {
       path: '/login',
       name: 'login',
       component: LoginView,
+      meta: { guest: true },
+    },
+    {
+      path: '/register',
+      name: 'register',
+      component: RegisterView,
       meta: { guest: true },
     },
     {
@@ -37,16 +47,32 @@ const router = createRouter({
       meta: { requiresAuth: true, role: 'shipper' },
     },
     {
-      path: '/get-validated',
-      name: 'get-validated',
-      component: GetValidated,
+      path: '/driver/profile',
+      name: 'driver-profile',
+      component: UserProfile,
       meta: { requiresAuth: true, role: 'driver' },
     },
     {
-      path: '/get-validated-shipper',
-      name: 'get-validated-shipper',
-      component: GetValidated,
+      path: '/shipper/profile',
+      name: 'shipper-profile',
+      component: UserProfile,
       meta: { requiresAuth: true, role: 'shipper' },
+    },
+    {
+      path: '/get-validated',
+      name: 'get-validated',
+      component: GetValidated,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/get-validated-shipper',
+      redirect: '/get-validated',
+    },
+    {
+      path: '/shipments/:id',
+      name: 'shipment-detail',
+      component: ShipmentDetailView,
+      meta: { requiresAuth: true },
     },
     {
       path: '/admin',
@@ -55,15 +81,25 @@ const router = createRouter({
       meta: { requiresAuth: true, role: 'admin' },
     },
     {
-      path: '/admin/pending',
-      name: 'admin-pending',
-      component: PendingUsers,
+      path: '/admin/profile',
+      name: 'admin-profile',
+      component: AdminProfile,
       meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/pending',
+      redirect: '/admin/verifications',
     },
     {
       path: '/admin/verifications',
       name: 'admin-verifications',
       component: AdminVerificationReview,
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/support',
+      name: 'admin-support',
+      component: AdminSupportDesk,
       meta: { requiresAuth: true, role: 'admin' },
     },
   ],

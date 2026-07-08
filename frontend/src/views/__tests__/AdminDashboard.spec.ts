@@ -29,6 +29,7 @@ const mockSearchQuery = ref('')
 const mockActiveTab = ref('all')
 const mockPendingCount = ref(0)
 const mockRejectedCount = ref(0)
+const mockVerifiedCount = ref(0)
 const mockSuspendMutate = vi.fn()
 const mockSuspendIsPending = ref(false)
 const mockRefetchAll = vi.fn()
@@ -42,6 +43,7 @@ vi.mock('@/composables/useAdminUsers', () => ({
     activeTab: mockActiveTab,
     pendingCount: { data: mockPendingCount },
     rejectedCount: { data: mockRejectedCount },
+    verifiedCount: { data: mockVerifiedCount },
     suspendMutation: {
       mutate: mockSuspendMutate,
       isPending: mockSuspendIsPending,
@@ -72,6 +74,7 @@ describe('AdminDashboard Component Tests', () => {
     mockActiveTab.value = 'all'
     mockPendingCount.value = 4
     mockRejectedCount.value = 1
+    mockVerifiedCount.value = 15
     mockSuspendIsPending.value = false
   })
 
@@ -82,7 +85,7 @@ describe('AdminDashboard Component Tests', () => {
 
       renderDashboard()
 
-      expect(screen.queryByText('Admin Dashboard')).not.toBeInTheDocument()
+      expect(screen.queryByText('Total Users')).not.toBeInTheDocument()
       expect(mockRouterReplace).not.toHaveBeenCalled()
     })
 
@@ -111,11 +114,10 @@ describe('AdminDashboard Component Tests', () => {
       expect(mockRouterReplace).toHaveBeenCalledWith('/login')
     })
 
-    it('renders dashboard heading and description when authenticated as admin', () => {
+    it('renders dashboard content when authenticated as admin', () => {
       renderDashboard()
 
-      expect(screen.getByText('Admin Dashboard')).toBeInTheDocument()
-      expect(screen.getByText('Manage drivers, shippers, and platform users')).toBeInTheDocument()
+      expect(screen.getByText('Total Users')).toBeInTheDocument()
       expect(mockRouterReplace).not.toHaveBeenCalled()
     })
   })
@@ -381,6 +383,142 @@ describe('AdminDashboard Component Tests', () => {
         userId: 'suspended-77',
         suspended: false,
       })
+    })
+  })
+
+  describe('Clickable Dashboard Cards & Status/Role Filtering (All 8 Cards)', () => {
+    beforeEach(() => {
+      mockUsers.value = [
+        { id: '1', name: 'Alice Driver', email: 'alice@driver.com', role: 'driver', verification_status: 'approved', suspended: false },
+        { id: '2', name: 'Bob Shipper', email: 'bob@shipper.com', role: 'shipper', verification_status: 'pending', suspended: false },
+        { id: '3', name: 'Charlie Admin', email: 'charlie@admin.com', role: 'admin', verification_status: 'approved', suspended: false },
+        { id: '4', name: 'Dave Rejected', email: 'dave@driver.com', role: 'driver', verification_status: 'rejected', suspended: false },
+        { id: '5', name: 'Eve Suspended', email: 'eve@shipper.com', role: 'shipper', verification_status: 'approved', suspended: true },
+      ]
+      mockPendingCount.value = 1
+      mockRejectedCount.value = 1
+      mockVerifiedCount.value = 3
+    })
+
+    it('renders all 8 summary cards with their respective titles and counts', () => {
+      renderDashboard()
+
+      expect(screen.getByText('Total Users')).toBeInTheDocument()
+      expect(screen.getAllByText('Drivers').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Shippers').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Admins').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getByText('Verified')).toBeInTheDocument()
+      expect(screen.getByText('Pending')).toBeInTheDocument()
+      expect(screen.getByText('Rejected')).toBeInTheDocument()
+      expect(screen.getAllByText('Suspended').length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('clicking Total Users card sets activeTab to "all" and shows all users', async () => {
+      mockActiveTab.value = 'driver'
+      renderDashboard()
+
+      const totalCard = screen.getByText('Total Users').closest('.cursor-pointer')!
+      await fireEvent.click(totalCard)
+
+      expect(mockActiveTab.value).toBe('all')
+    })
+
+    it('clicking Drivers card sets activeTab to "driver" and filters table to only drivers', async () => {
+      renderDashboard()
+
+      const driversCard = screen.getAllByText('Drivers').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
+      await fireEvent.click(driversCard)
+
+      expect(mockActiveTab.value).toBe('driver')
+      expect(screen.getByText('Alice Driver')).toBeInTheDocument()
+      expect(screen.getByText('Dave Rejected')).toBeInTheDocument()
+      expect(screen.queryByText('Bob Shipper')).not.toBeInTheDocument()
+      expect(screen.queryByText('Charlie Admin')).not.toBeInTheDocument()
+    })
+
+    it('clicking Shippers card sets activeTab to "shipper" and filters table to only shippers', async () => {
+      renderDashboard()
+
+      const shippersCard = screen.getAllByText('Shippers').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
+      await fireEvent.click(shippersCard)
+
+      expect(mockActiveTab.value).toBe('shipper')
+      expect(screen.getByText('Bob Shipper')).toBeInTheDocument()
+      expect(screen.getByText('Eve Suspended')).toBeInTheDocument()
+      expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
+    })
+
+    it('clicking Admins card sets activeTab to "admin" and filters table to only admins', async () => {
+      renderDashboard()
+
+      const adminsCard = screen.getAllByText('Admins').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
+      await fireEvent.click(adminsCard)
+
+      expect(mockActiveTab.value).toBe('admin')
+      expect(screen.getByText('Charlie Admin')).toBeInTheDocument()
+      expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
+    })
+
+    it('clicking Verified card sets activeTab to "verified" and filters table to approved users', async () => {
+      renderDashboard()
+
+      const verifiedCard = screen.getByText('Verified').closest('.cursor-pointer')!
+      await fireEvent.click(verifiedCard)
+
+      expect(mockActiveTab.value).toBe('verified')
+      expect(screen.getByText('Alice Driver')).toBeInTheDocument()
+      expect(screen.getByText('Charlie Admin')).toBeInTheDocument()
+      expect(screen.getByText('Eve Suspended')).toBeInTheDocument()
+      expect(screen.queryByText('Bob Shipper')).not.toBeInTheDocument()
+      expect(screen.queryByText('Dave Rejected')).not.toBeInTheDocument()
+    })
+
+    it('clicking Pending card sets activeTab to "pending" and filters table to pending users', async () => {
+      renderDashboard()
+
+      const pendingCard = screen.getByText('Pending').closest('.cursor-pointer')!
+      await fireEvent.click(pendingCard)
+
+      expect(mockActiveTab.value).toBe('pending')
+      expect(screen.getByText('Bob Shipper')).toBeInTheDocument()
+      expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
+    })
+
+    it('clicking Rejected card sets activeTab to "rejected" and filters table to rejected users', async () => {
+      renderDashboard()
+
+      const rejectedCard = screen.getByText('Rejected').closest('.cursor-pointer')!
+      await fireEvent.click(rejectedCard)
+
+      expect(mockActiveTab.value).toBe('rejected')
+      expect(screen.getByText('Dave Rejected')).toBeInTheDocument()
+      expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
+    })
+
+    it('clicking Suspended card sets activeTab to "suspended" and filters table to suspended users', async () => {
+      renderDashboard()
+
+      const suspendedCard = screen.getAllByText('Suspended').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
+      await fireEvent.click(suspendedCard)
+
+      expect(mockActiveTab.value).toBe('suspended')
+      expect(screen.getByText('Eve Suspended')).toBeInTheDocument()
+      expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
+    })
+
+    it('applies active highlight border/ring styling class to whichever card is active', async () => {
+      mockActiveTab.value = 'verified'
+      renderDashboard()
+
+      const verifiedCard = screen.getByText('Verified').closest('.cursor-pointer')!
+      expect(verifiedCard.className).toContain('ring-2')
+      expect(verifiedCard.className).toContain('ring-green-600')
+
+      mockActiveTab.value = 'rejected'
+      await nextTick()
+      const rejectedCard = screen.getByText('Rejected').closest('.cursor-pointer')!
+      expect(rejectedCard.className).toContain('ring-2')
+      expect(rejectedCard.className).toContain('ring-destructive')
     })
   })
 })

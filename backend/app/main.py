@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.routes import shipments, auth, admin, verification
+from app.routes import shipments, auth, admin, verification, users, support
 from app.middleware import RequestLoggingMiddleware, RateLimitMiddleware
 from app.database import connect_db, disconnect_db
 
@@ -43,9 +43,11 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(users.router, prefix="/api", tags=["users"])
 app.include_router(shipments.router, prefix="/api/shipments", tags=["shipments"])
 app.include_router(admin.router, prefix="/api", tags=["admin"])
 app.include_router(verification.router, prefix="/api", tags=["verification"])
+app.include_router(support.router, prefix="/api/support", tags=["support"])
 
 
 @app.get("/api/health")

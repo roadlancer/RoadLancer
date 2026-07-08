@@ -1,20 +1,22 @@
 <script lang="ts" setup>
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import api from '@/lib/api'
 import { useAuth } from '@/composables/useAuth'
 import { useAdminUsers } from '@/composables/useAdminUsers'
+import VerificationDetailDialog from '@/components/VerificationDetailDialog.vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
+import UsersTable from '@/components/UsersTable.vue'
+import { LoaderCircle, Users, UserCheck, UserX, Search, Filter, ArrowUpDown, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()
@@ -27,6 +29,7 @@ const {
   activeTab,
   pendingCount,
   rejectedCount,
+  verifiedCount,
   suspendMutation,
   refetchAll,
 } = useAdminUsers()
@@ -34,6 +37,9 @@ const {
 const suspendDialogOpen = ref(false)
 const suspendTarget = ref<any>(null)
 const suspendReason = ref('')
+
+const verificationDialogOpen = ref(false)
+const selectedVerification = ref<any>(null)
 
 const driverReasons = [
   'Repeated late deliveries',
@@ -65,16 +71,35 @@ const suspendReasons = computed(() => {
   return []
 })
 
+const sortBy = ref('default')
+
 const filteredUsers = computed(() => {
-  let result = users.value ?? []
+  let result = [...(users.value ?? [])]
   if (activeTab.value !== 'all') {
-    result = result.filter((u: any) => u.role === activeTab.value)
+    if (['driver', 'shipper', 'admin'].includes(activeTab.value)) {
+      result = result.filter((u: any) => u.role === activeTab.value)
+    } else if (activeTab.value === 'verified') {
+      result = result.filter((u: any) => u.verification_status === 'approved')
+    } else if (activeTab.value === 'pending') {
+      result = result.filter((u: any) => u.verification_status === 'pending')
+    } else if (activeTab.value === 'rejected') {
+      result = result.filter((u: any) => u.verification_status === 'rejected')
+    } else if (activeTab.value === 'suspended') {
+      result = result.filter((u: any) => u.suspended)
+    }
   }
   if (searchQuery.value) {
     const q = searchQuery.value.toLowerCase()
     result = result.filter((u: any) =>
       u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
     )
+  }
+  if (sortBy.value === 'name') {
+    result.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''))
+  } else if (sortBy.value === 'role') {
+    result.sort((a: any, b: any) => (a.role || '').localeCompare(b.role || ''))
+  } else if (sortBy.value === 'status') {
+    result.sort((a: any, b: any) => Number(a.suspended || 0) - Number(b.suspended || 0))
   }
   return result
 })
@@ -105,149 +130,244 @@ function unsuspendUser(userId: string) {
   suspendMutation.mutate({ userId, suspended: false })
 }
 
+async function openVerificationDetails(user: any) {
+  try {
+    const { data } = await api.get('/verification/admin/list', {
+      params: { search: user.email, status: 'all' }
+    })
+    const record = data?.find((v: any) => v.userId === user.id)
+    
+    if (record) {
+      selectedVerification.value = record
+    } else {
+      selectedVerification.value = {
+        id: user.id,
+        userId: user.id,
+        userName: user.name,
+        userEmail: user.email,
+        userRole: user.role,
+        status: user.verification_status || 'none',
+      }
+    }
+  } catch(e) {
+    selectedVerification.value = {
+      id: user.id,
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      status: user.verification_status || 'pending',
+    }
+  }
+  verificationDialogOpen.value = true
+}
+
 watch([user, loading], ([u, l]) => {
   if (!l && (!u || u.role !== 'admin')) router.replace('/login')
 })
 </script>
 
 <template>
-  <div class="flex-1 p-8">
-    <div v-if="loading" class="max-w-6xl mx-auto">
-      <div class="mb-8">
-        <Skeleton class="h-9 w-64 mb-2" />
-        <Skeleton class="h-5 w-96" />
-      </div>
-      <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-8">
-        <Card v-for="i in 7" :key="i">
-          <CardContent class="pt-6">
-            <div class="flex items-center gap-3">
-              <Skeleton class="w-10 h-10 rounded-lg" />
-              <div class="space-y-2">
-                <Skeleton class="h-8 w-12" />
-                <Skeleton class="h-3 w-16" />
+  <div class="flex-1 p-6 sm:p-8">
+    <div v-if="loading" class="max-w-5xl mx-auto">
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 auto-rows-fr gap-2.5 mb-6">
+        <Card v-for="i in 8" :key="i">
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <Skeleton class="w-8 h-8 rounded-md shrink-0" />
+              <div class="space-y-1.5 min-w-0">
+                <Skeleton class="h-4 w-10" />
+                <Skeleton class="h-3 w-14" />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
       <Card>
-        <CardHeader>
+        <CardHeader class="py-4 px-5">
           <Skeleton class="h-6 w-24 mb-4" />
-          <Skeleton class="h-10 w-full" />
+          <Skeleton class="h-9 w-full" />
         </CardHeader>
-        <CardContent>
-          <div class="space-y-4">
-            <div v-for="i in 5" :key="i" class="flex items-center gap-4">
-              <Skeleton class="w-8 h-8 rounded-full" />
-              <div class="flex-1 space-y-2">
-                <Skeleton class="h-4 w-32" />
-                <Skeleton class="h-3 w-48" />
+        <CardContent class="px-5 pb-5">
+          <div class="space-y-3">
+            <div v-for="i in 5" :key="i" class="flex items-center gap-3 py-2">
+              <Skeleton class="w-7 h-7 rounded-full" />
+              <div class="flex-1 space-y-1.5">
+                <Skeleton class="h-4 w-28" />
+                <Skeleton class="h-3 w-40" />
               </div>
-              <Skeleton class="h-6 w-16" />
+              <Skeleton class="h-6 w-14" />
             </div>
           </div>
         </CardContent>
       </Card>
     </div>
 
-    <div v-else-if="user && user.role === 'admin'" class="max-w-6xl mx-auto">
-      <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground mb-2">Admin Dashboard</h1>
-        <p class="text-muted-foreground">Manage drivers, shippers, and platform users</p>
+    <div v-else-if="user && user.role === 'admin'" class="max-w-5xl mx-auto">
+      <!-- Admin Portal Navigation Header -->
+      <div class="mb-6 p-5 rounded-2xl bg-gradient-to-r from-gray-900 to-teal-950 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+        <div>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-teal-500/20 border border-teal-500/30 text-[10px] font-bold uppercase tracking-wider text-teal-300">
+            <span>🛡️</span> RoadLancer Admin Portal
+          </div>
+          <h2 class="text-xl font-black text-white mt-1">System Administration & Helpdesk</h2>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <a
+            href="/admin"
+            class="px-4 py-2 rounded-xl bg-teal-600 text-white font-extrabold text-xs shadow-md hover:bg-teal-500 transition-all flex items-center gap-1.5"
+          >
+            <span>👥</span> User Management
+          </a>
+          <a
+            href="/admin/support"
+            class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-extrabold text-xs transition-all flex items-center gap-1.5"
+          >
+            <span>🎧</span> Support Desk & Inbound Emails
+          </a>
+        </div>
       </div>
 
-      <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-8">
-        <Card>
-          <CardContent class="pt-6">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                <Users class="size-5 text-primary" />
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 auto-rows-fr gap-2.5 mb-6">
+        <Card
+          @click="activeTab = 'all'"
+          class="cursor-pointer transition-all hover:border-primary/50"
+          :class="activeTab === 'all' ? 'ring-2 ring-primary border-primary bg-primary/5' : ''"
+        >
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 bg-primary/10 rounded-md flex items-center justify-center shrink-0">
+                <Users class="size-4 text-primary" />
               </div>
-              <div>
-                <p class="text-2xl font-bold">{{ stats.total }}</p>
-                <p class="text-xs text-muted-foreground">Total Users</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="pt-6">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                <UserCheck class="size-5 text-blue-600" />
-              </div>
-              <div>
-                <p class="text-2xl font-bold">{{ stats.drivers }}</p>
-                <p class="text-xs text-muted-foreground">Drivers</p>
+              <div class="min-w-0">
+                <p class="text-lg font-bold leading-none mb-1">{{ stats.total }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">Total Users</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent class="pt-6">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
-                <UserCheck class="size-5 text-green-600" />
+
+        <Card
+          @click="activeTab = 'driver'"
+          class="cursor-pointer transition-all hover:border-blue-500/50"
+          :class="activeTab === 'driver' ? 'ring-2 ring-blue-600 border-blue-600 bg-blue-500/5' : ''"
+        >
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 bg-blue-500/10 rounded-md flex items-center justify-center shrink-0">
+                <UserCheck class="size-4 text-blue-600" />
               </div>
-              <div>
-                <p class="text-2xl font-bold">{{ stats.shippers }}</p>
-                <p class="text-xs text-muted-foreground">Shippers</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent class="pt-6">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
-                <Shield class="size-5 text-amber-600" />
-              </div>
-              <div>
-                <p class="text-2xl font-bold">{{ stats.admins }}</p>
-                <p class="text-xs text-muted-foreground">Admins</p>
+              <div class="min-w-0">
+                <p class="text-lg font-bold leading-none mb-1">{{ stats.drivers }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">Drivers</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <router-link to="/admin/verifications" class="block">
-          <Card class="hover:border-primary/50 transition-colors cursor-pointer">
-            <CardContent class="pt-6">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-orange-500/10 rounded-lg flex items-center justify-center">
-                  <Clock class="size-5 text-orange-600" />
-                </div>
-                <div>
-                  <p class="text-2xl font-bold">{{ pendingCount.data.value ?? 0 }}</p>
-                  <p class="text-xs text-muted-foreground">Pending</p>
-                </div>
+
+        <Card
+          @click="activeTab = 'shipper'"
+          class="cursor-pointer transition-all hover:border-green-500/50"
+          :class="activeTab === 'shipper' ? 'ring-2 ring-green-600 border-green-600 bg-green-500/5' : ''"
+        >
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 bg-green-500/10 rounded-md flex items-center justify-center shrink-0">
+                <UserCheck class="size-4 text-green-600" />
               </div>
-            </CardContent>
-          </Card>
-        </router-link>
-        <router-link to="/admin/verifications" class="block">
-          <Card class="hover:border-destructive/50 transition-colors cursor-pointer">
-            <CardContent class="pt-6">
-              <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
-                  <XCircle class="size-5 text-red-600" />
-                </div>
-                <div>
-                  <p class="text-2xl font-bold">{{ rejectedCount.data.value ?? 0 }}</p>
-                  <p class="text-xs text-muted-foreground">Rejected</p>
-                </div>
+              <div class="min-w-0">
+                <p class="text-lg font-bold leading-none mb-1">{{ stats.shippers }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">Shippers</p>
               </div>
-            </CardContent>
-          </Card>
-        </router-link>
-        <Card>
-          <CardContent class="pt-6">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
-                <UserX class="size-5 text-red-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          @click="activeTab = 'admin'"
+          class="cursor-pointer transition-all hover:border-amber-500/50"
+          :class="activeTab === 'admin' ? 'ring-2 ring-amber-600 border-amber-600 bg-amber-500/5' : ''"
+        >
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 bg-amber-500/10 rounded-md flex items-center justify-center shrink-0">
+                <Shield class="size-4 text-amber-600" />
               </div>
-              <div>
-                <p class="text-2xl font-bold">{{ stats.suspended }}</p>
-                <p class="text-xs text-muted-foreground">Suspended</p>
+              <div class="min-w-0">
+                <p class="text-lg font-bold leading-none mb-1">{{ stats.admins }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">Admins</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          @click="activeTab = 'verified'"
+          class="cursor-pointer transition-all hover:border-green-500/50"
+          :class="activeTab === 'verified' ? 'ring-2 ring-green-600 border-green-600 bg-green-500/5' : ''"
+        >
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 bg-green-500/10 rounded-md flex items-center justify-center shrink-0">
+                <ShieldCheck class="size-4 text-green-600" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-lg font-bold leading-none mb-1">{{ verifiedCount.data.value ?? 0 }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">Verified</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          @click="activeTab = 'pending'"
+          class="cursor-pointer transition-all hover:border-orange-500/50"
+          :class="activeTab === 'pending' ? 'ring-2 ring-orange-600 border-orange-600 bg-orange-500/5' : ''"
+        >
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 bg-orange-500/10 rounded-md flex items-center justify-center shrink-0">
+                <Clock class="size-4 text-orange-600" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-lg font-bold leading-none mb-1">{{ pendingCount.data.value ?? 0 }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">Pending</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          @click="activeTab = 'rejected'"
+          class="cursor-pointer transition-all hover:border-destructive/50"
+          :class="activeTab === 'rejected' ? 'ring-2 ring-destructive border-destructive bg-destructive/5' : ''"
+        >
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 bg-red-500/10 rounded-md flex items-center justify-center shrink-0">
+                <XCircle class="size-4 text-red-600" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-lg font-bold leading-none mb-1">{{ rejectedCount.data.value ?? 0 }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">Rejected</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          @click="activeTab = 'suspended'"
+          class="cursor-pointer transition-all hover:border-red-500/50"
+          :class="activeTab === 'suspended' ? 'ring-2 ring-red-600 border-red-600 bg-red-500/5' : ''"
+        >
+          <CardContent class="p-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 bg-red-500/10 rounded-md flex items-center justify-center shrink-0">
+                <UserX class="size-4 text-red-600" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-lg font-bold leading-none mb-1">{{ stats.suspended }}</p>
+                <p class="text-[11px] text-muted-foreground truncate">Suspended</p>
               </div>
             </div>
           </CardContent>
@@ -260,109 +380,70 @@ watch([user, loading], ([u, l]) => {
       </Alert>
 
       <Card>
-        <CardHeader>
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <CardTitle>Users</CardTitle>
-            <div class="flex items-center gap-3">
+        <CardHeader class="pb-4">
+          <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div class="flex flex-wrap items-center gap-3">
+              <CardTitle class="mr-1">Users</CardTitle>
+              <Button size="sm" class="bg-primary hover:bg-primary/90 text-primary-foreground h-8 text-xs font-semibold shadow-2xs" @click="router.push('/admin/verifications')">
+                <ShieldCheck class="size-3.5 mr-1.5" /> Review Verification Docs
+              </Button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2.5">
               <div class="relative">
                 <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   v-model="searchQuery"
                   placeholder="Search users..."
-                  class="pl-9 w-64"
+                  class="pl-9 w-56 h-9 text-sm"
                 />
               </div>
-              <Button variant="outline" size="sm" @click="refetchAll" :disabled="loadingUsers">
-                <LoaderCircle v-if="loadingUsers" class="size-4 animate-spin" />
+
+              <div class="relative">
+                <Filter class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                <select
+                  v-model="activeTab"
+                  class="flex h-9 w-40 appearance-none rounded-md border border-input bg-background pl-8 pr-7 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                >
+                  <option value="all">Filter: All Users</option>
+                  <option value="driver">Filter: Drivers</option>
+                  <option value="shipper">Filter: Shippers</option>
+                  <option value="admin">Filter: Admins</option>
+                  <option value="verified">Filter: Verified</option>
+                  <option value="pending">Filter: Pending</option>
+                  <option value="rejected">Filter: Rejected</option>
+                  <option value="suspended">Filter: Suspended</option>
+                </select>
+              </div>
+
+              <div class="relative">
+                <ArrowUpDown class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+                <select
+                  v-model="sortBy"
+                  class="flex h-9 w-36 appearance-none rounded-md border border-input bg-background pl-8 pr-7 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                >
+                  <option value="default">Sort by: Default</option>
+                  <option value="name">Sort by: Name</option>
+                  <option value="role">Sort by: Role</option>
+                  <option value="status">Sort by: Status</option>
+                </select>
+              </div>
+
+              <Button variant="outline" size="sm" class="h-9" @click="refetchAll" :disabled="loadingUsers">
+                <LoaderCircle v-if="loadingUsers" class="size-4 animate-spin mr-1.5" />
                 Refresh
               </Button>
             </div>
           </div>
-          <Tabs v-model="activeTab" class="w-full">
-            <TabsList class="grid w-full grid-cols-4">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="driver">Drivers</TabsTrigger>
-              <TabsTrigger value="shipper">Shippers</TabsTrigger>
-              <TabsTrigger value="admin">Admins</TabsTrigger>
-            </TabsList>
-          </Tabs>
         </CardHeader>
         <CardContent>
-          <div v-if="loadingUsers" class="space-y-4">
-            <div v-for="i in 5" :key="i" class="flex items-center gap-4 p-3">
-              <Skeleton class="w-8 h-8 rounded-full" />
-              <div class="flex-1 space-y-2">
-                <Skeleton class="h-4 w-32" />
-                <Skeleton class="h-3 w-48" />
-              </div>
-              <Skeleton class="h-6 w-16" />
-              <Skeleton class="h-6 w-20" />
-            </div>
-          </div>
-
-          <div v-else-if="filteredUsers.length === 0" class="text-center py-12">
-            <Users class="size-12 text-muted-foreground/50 mx-auto mb-3" />
-            <p class="text-muted-foreground">No users found</p>
-          </div>
-
-          <div v-else class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="border-b border-border">
-                  <th class="text-left py-3 px-2 font-medium text-muted-foreground">User</th>
-                  <th class="text-left py-3 px-2 font-medium text-muted-foreground">Role</th>
-                  <th class="text-left py-3 px-2 font-medium text-muted-foreground">Phone</th>
-                  <th class="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
-                  <th class="text-right py-3 px-2 font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="u in filteredUsers"
-                  :key="u.id"
-                  class="border-b border-border last:border-0 hover:bg-muted/50"
-                >
-                  <td class="py-3 px-2">
-                    <div>
-                      <p class="font-medium">{{ u.name }}</p>
-                      <p class="text-xs text-muted-foreground">{{ u.email }}</p>
-                    </div>
-                  </td>
-                  <td class="py-3 px-2">
-                    <Badge variant="secondary" class="capitalize">{{ u.role }}</Badge>
-                  </td>
-                  <td class="py-3 px-2 text-muted-foreground">
-                    {{ u.phone || '—' }}
-                  </td>
-                  <td class="py-3 px-2">
-                    <Badge :variant="u.suspended ? 'destructive' : 'default'">
-                      {{ u.suspended ? 'Suspended' : 'Active' }}
-                    </Badge>
-                  </td>
-                  <td class="py-3 px-2 text-right">
-                    <Button
-                      v-if="u.role !== 'admin' && !u.suspended"
-                      variant="destructive"
-                      size="sm"
-                      @click="openSuspendDialog(u)"
-                    >
-                      Suspend
-                    </Button>
-                    <Button
-                      v-else-if="u.role !== 'admin' && u.suspended"
-                      variant="outline"
-                      size="sm"
-                      :disabled="suspendMutation.isPending.value"
-                      @click="unsuspendUser(u.id)"
-                    >
-                      <LoaderCircle v-if="suspendMutation.isPending.value" class="size-3 animate-spin mr-1" />
-                      Unsuspend
-                    </Button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <UsersTable
+            :users="filteredUsers"
+            :loading="loadingUsers"
+            :suspend-pending="suspendMutation.isPending.value"
+            @suspend="openSuspendDialog"
+            @unsuspend="unsuspendUser"
+            @view-verification="openVerificationDetails"
+          />
         </CardContent>
       </Card>
 
@@ -408,6 +489,14 @@ watch([user, loading], ([u, l]) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <!-- Verification Details Dialog -->
+      <VerificationDetailDialog
+        :open="verificationDialogOpen"
+        :verification="selectedVerification"
+        :show-actions="false"
+        @update:open="verificationDialogOpen = $event"
+      />
     </div>
   </div>
 </template>

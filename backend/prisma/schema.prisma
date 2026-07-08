@@ -36,9 +36,9 @@ model user {
   image         String?
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
-  role          Role      @default(driver)
+  role          Role       @default(driver)
   phone         String?
-  suspended     Boolean   @default(false)
+  suspended     Boolean    @default(false)
   status        UserStatus @default(approved)
 
   session         session[]
@@ -47,6 +47,7 @@ model user {
   assignedShipments shipments[] @relation("Driver")
   bids            bids[]
   verification    user_verifications?
+  supportTickets  support_tickets[]
 
   @@map("user")
 }
@@ -113,13 +114,14 @@ model shipments {
   aiEstimatedMin   Decimal?  @map("ai_estimated_min") @db.Decimal(10, 2)
   aiEstimatedMax   Decimal?  @map("ai_estimated_max") @db.Decimal(10, 2)
   shipperBudget    Decimal?  @map("shipper_budget") @db.Decimal(10, 2)
+  isForcedPrice    Boolean   @default(false) @map("is_forced_price")
   status           String    @default("draft")
   assignedDriverId String?   @map("assigned_driver_id")
   biddingEndsAt    DateTime? @map("bidding_ends_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  shipper        user?   @relation("Shipper", fields: [shipperId], references: [id], onDelete: Cascade)
+  shipper        user    @relation("Shipper", fields: [shipperId], references: [id], onDelete: Cascade)
   assignedDriver user?   @relation("Driver", fields: [assignedDriverId], references: [id], onDelete: SetNull)
   bids           bids[]
   verifications  verifications[]
@@ -165,23 +167,83 @@ model user_verifications {
   userId          String             @unique @map("user_id")
   user            user               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Driver fields
-  licenseNumber   String?            @map("license_number")
-  vehicleType     String?            @map("vehicle_type")
-  vehicleNumber   String?            @map("vehicle_number")
+  // === Common fields ===
+  fullName              String?      @map("full_name")
+  fatherName            String?      @map("father_name")
+  dateOfBirth           DateTime?    @map("date_of_birth")
+  bloodGroup            String?      @map("blood_group")
+  aadhaarLast4          String?      @map("aadhaar_last4")
+  address               String?
+  phone                 String?
+  emergencyContactName  String?      @map("emergency_contact_name")
+  emergencyContactPhone String?      @map("emergency_contact_phone")
+  profilePhoto          String?      @map("profile_photo")
+  aadhaarPhoto          String?      @map("aadhaar_photo")
 
-  // Shipper fields
-  businessName    String?            @map("business_name")
-  gstNumber       String?            @map("gst_number")
-  companyAddress  String?            @map("company_address")
+  // === Driver-specific fields ===
+  licenseNumber         String?      @map("license_number")
+  dlExpiryDate          DateTime?    @map("dl_expiry_date")
+  dlCategory            String?      @map("dl_category")
+  vehicleRegNumber      String?      @map("vehicle_reg_number")
+  vehicleType           String?      @map("vehicle_type")
+  vehicleMakeModel      String?      @map("vehicle_make_model")
+  vehicleYear           Int?         @map("vehicle_year")
+  insurancePolicyNumber String?      @map("insurance_policy_number")
+  insuranceProvider     String?      @map("insurance_provider")
+  insuranceExpiryDate   DateTime?    @map("insurance_expiry_date")
+  pucCertificateNumber  String?      @map("puc_certificate_number")
+  pucExpiryDate         DateTime?    @map("puc_expiry_date")
+  dlPhoto               String?      @map("dl_photo")
+  rcBookPhoto           String?      @map("rc_book_photo")
+  insurancePhoto        String?      @map("insurance_photo")
 
+  // === Shipper-specific fields ===
+  businessName          String?      @map("business_name")
+  businessType          String?      @map("business_type")
+  gstNumber             String?      @map("gst_number")
+  panNumber             String?      @map("pan_number")
+  registeredAddress     String?      @map("registered_address")
+  annualTurnover        String?      @map("annual_turnover")
+  yearsInBusiness       Int?         @map("years_in_business")
+  primaryGoodsCategory  String?      @map("primary_goods_category")
+  gstCertPhoto          String?      @map("gst_cert_photo")
+  panCardPhoto          String?      @map("pan_card_photo")
+  businessRegPhoto      String?      @map("business_reg_photo")
+
+  // === AI Verification (Phase 2 — columns pre-created) ===
+  aiVerificationScore   Float?       @map("ai_verification_score")
+  aiVerificationResult  String?      @map("ai_verification_result")
+  aiVerifiedAt          DateTime?    @map("ai_verified_at")
+  aiAutoRejected        Boolean      @default(false) @map("ai_auto_rejected")
+
+  // === Status & Review ===
   status          VerificationStatus @default(pending)
   reviewedBy      String?            @map("reviewed_by")
   reviewedAt      DateTime?          @map("reviewed_at")
   rejectionReason String?            @map("rejection_reason")
-
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
   @@map("user_verifications")
 }
+
+model support_tickets {
+  id           String   @id @default(uuid())
+  ticketNumber String   @unique @map("ticket_number")
+  senderEmail  String   @map("sender_email")
+  senderName   String?  @map("sender_name")
+  subject      String
+  message      String
+  status       String   @default("open")
+  priority     String   @default("normal")
+  source       String   @default("email")
+  userId       String?  @map("user_id")
+  adminNotes   String?  @map("admin_notes")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user user? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("support_tickets")
+}
+

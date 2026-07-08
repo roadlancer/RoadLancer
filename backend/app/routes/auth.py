@@ -30,17 +30,21 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     if getattr(user, "suspended", False):
         raise HTTPException(status_code=403, detail="Account suspended. Contact admin.")
 
-    user_status = getattr(user, "status", "approved")
-    if user_status != "approved":
-        status_msg = "Account pending approval. Please wait for admin approval." if user_status == "pending" else "Account has been rejected. Contact admin."
-        raise HTTPException(status_code=403, detail=status_msg)
+    user_status_raw = getattr(user, "status", "approved")
+    user_status = user_status_raw.value if hasattr(user_status_raw, "value") else user_status_raw
+    if user_status == "rejected":
+        raise HTTPException(status_code=403, detail="Account has been rejected. Contact admin.")
+
+    role_raw = getattr(user, "role", "driver")
+    role_str = role_raw.value if hasattr(role_raw, "value") else role_raw
 
     return {
         "id": user.id,
         "email": user.email,
         "name": user.name,
-        "role": user.role,
+        "role": role_str,
         "phone": user.phone,
+        "status": user_status,
     }
 
 

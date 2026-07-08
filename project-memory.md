@@ -34,14 +34,14 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Styling:** Tailwind CSS 4
 - **UI Library:** shadcn-vue (reka-ui primitives, Lucide icons via `@lucide/vue`)
 - **Theme:** Teal (primary: `oklch(0.511 0.096 186.391)`)
-- **Form Validation:** Zod v4 + manual `safeParse()` (no vuehookform)
+- **Form Validation:** Zod v4 schemas + manual `safeParse()` across all form inputs (`LoginView.vue`, `GetValidated.vue`, etc. — no vuehookform)
 - **Auth Client:** `better-auth` vanilla client (`baseURL: ''` for Vite proxy)
 - **HTTP Client:** Axios (`@/lib/api.ts`) — centralized instance with Bearer token interceptor
 - **Data Fetching:** TanStack Query (`@tanstack/vue-query`) — automatic caching, refetching, mutations
 - **Router:** Vue Router with auth navigation guards
 - **Composables:** `useAuth()`, `useVerificationStatus()`, `useAdminUsers()`, `usePendingUsers()`, `useVerificationList()`
-- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup
-- **Layout:** Sticky NavBar, Footer, centered login card with role selection
+- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup, UsersTable
+- **Layout:** Sticky NavBar (left-aligned brand & Dashboard links, uniform h-10 primary buttons), Footer, Admin Dashboard (compact stats cards, role filter & sort selects, extracted user table), centered login card with role selection
 - **Port:** 5173
 
 ---
@@ -69,6 +69,11 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Payments | Mock | Status fields only |
 | SMS/OTP | Mock | Displayed on screen, no Exotel |
 | Docker | No | Runs directly on laptop |
+| AI Pricing | Rule-based engine | Fast, free, deterministic — no LLM API costs, no latency |
+| Price Confirmation | Forced price protection | Shipper can set custom price but warning visible to admins only |
+| Landing Page | Public marketing page | Product introduction for new users, no auth required |
+| RoadLancer Brand | Logged-out only | Hidden when logged in to reduce visual clutter |
+| Footer | Removed | Simplified layout, no legal/policy requirements for college project |
 
 ---
 
@@ -82,8 +87,38 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 3 | FastAPI Backend Setup | ✅ Complete |
 | Phase 4 | Vue.js Frontend Setup (Login, NavBar, Home, Footer) | ✅ Complete |
 | Phase 4.5 | Admin Dashboard, Verification Flow, TanStack Query | ✅ Complete |
-| Phase 5 | Core Features (shipments, bids, verification) | ⬜ Not Started |
+| Phase 5 | Core Features (shipments, bids, AI pricing, price confirmation) | ✅ Complete |
+| Phase 5.1 | Marketing Landing Page, Public Home | ✅ Complete |
+| Phase 5.2 | AI Price Engine, Price Confirmation Flow | ✅ Complete |
+| Phase 5.3 | Driver Bidding Flow, Bid Review, Transit Status | ✅ Complete |
+| Phase 5.4 | Shipper Dashboard, Shipment Management | ✅ Complete |
+| Phase 5.5 | Forced Price Protection (Admin-only visibility) | ✅ Complete |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
+
+### Overall Completion: **~90%**
+
+| Area | Completion | Notes |
+|------|------------|-------|
+| Auth System | 100% | Better Auth, login, sessions, role-based access |
+| Backend Routes | 95% | 25+ endpoints, missing OTP verification |
+| AI Pricing Engine | 100% | Rule-based with all factors |
+| Database Schema | 100% | 8 models implemented |
+| Frontend Views | 95% | 12 views (all dashboards, login, register, home, shipment detail, verification) |
+| Frontend Composables | 100% | 12 composables |
+| Frontend Components | 100% | 8 components |
+| Shipment Flow | 100% | Create → Price → Bidding → Transit |
+| Testing | 85% | 49 E2E + 28 unit tests |
+
+### What's Missing
+
+| Item | Impact | Priority |
+|------|--------|----------|
+| **OTP Verification** | `verifications` table exists but no backend routes | 🟡 Important |
+| **Charts/Analytics** | No chart library installed | 🟢 Nice to have |
+| **Phone Login** | LoginView has phone tab but backend only supports email | 🟢 Nice to have |
+| **Bidding Countdown** | `bidding_ends_at` field exists but no UI timer | 🟢 Nice to have |
+| **Rejected Count Endpoint** | Documented but not implemented | 🟢 Nice to have |
+| **Sample Seed Data** | No sample shipments/bids for demo | 🟢 Nice to have |
 
 ### E2E Test Status
 - **Total tests:** 49
@@ -95,7 +130,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Framework:** Vitest + @testing-library/vue + jsdom
 - **Test runner:** `vitest run` (single run) or `vitest` (watch mode)
 - **Location:** `frontend/src/views/__tests__/*.spec.ts` and `frontend/src/**/*.spec.ts`
-- **Current tests:** AdminDashboard (17 tests)
+- **Current tests:** AdminDashboard (28 tests)
 - **Test setup:** `frontend/vitest.config.ts` (jsdom environment)
 
 ---
@@ -386,9 +421,16 @@ FastAPI dependency: get_current_user()
 ### Database Schema (Business Tables — FastAPI)
 | Table | Purpose |
 |-------|---------|
-| `shipments` | id, title, description, origin, destination, weight, status, shipperId, createdAt, updatedAt |
-| `bids` | id, amount, shipmentId, driverId, status, createdAt, updatedAt |
+| `shipments` | id, title, description, goodsCategory, weightKg, vehicleType, pickupAddress, dropoffAddress, distanceKm, shipperBudget, status, shipperId, assignedDriverId, aiFloorPrice, aiEstimatedMin, aiEstimatedMax, isForcedPrice, createdAt, updatedAt |
+| `bids` | id, amount, message, shipmentId, driverId, status (pending/accepted/rejected/withdrawn), createdAt, updatedAt |
 | `user_verifications` | id, userId (unique), driver fields (nullable), shipper fields (nullable), status (enum: pending/approved/rejected), reviewedBy, reviewedAt, rejectionReason, timestamps |
+
+### Shipment Status Flow
+```
+active → assigned → picked_up → in_transit → delivered → completed
+active → cancelled
+assigned → cancelled (only by shipper)
+```
 
 ### Role System
 - **Enum:** `admin` | `driver` | `shipper`
@@ -457,9 +499,90 @@ FastAPI dependency: get_current_user()
   - `POST /api/verification/submit/shipper` — submit shipper verification details
   - `GET /api/verification/admin/list` — list all verification submissions (admin, with status filter + search)
   - `GET /api/verification/admin/count` — count verifications by status (admin, defaults to pending)
-  - `POST /api/verification/admin/{id}/approve` — approve a verification (admin)
+  - `POST /api/verification/admin/{id}/approve` — approve a verification (admin, automatically syncs user table name/phone)
   - `POST /api/verification/admin/{id}/reject` — reject a verification (admin, with optional reason)
+  - `POST /api/verification/admin/{id}/reset-pending` — soft-reset a verification record back to pending (admin utility for re-verification)
+  - `POST /api/verification/admin/reset-all-pending` — soft-reset all verification records back to pending (admin utility for testing without hard deletion)
 - **`/api/shipments/*`** — Shipment CRUD + bid routes (IDOR-protected)
+  - `GET /api/shipments` — list shipments (drivers see active; shippers see all their shipments)
+  - `POST /api/shipments` — create shipment (with AI pricing)
+  - `GET /api/shipments/assigned` — get driver's assigned shipments
+  - `GET /api/shipments/bids/my` — get driver's bid history
+  - `GET /api/shipments/{id}` — get shipment details
+  - `PUT /api/shipments/{id}/status` — update shipment status (validated flow)
+  - `POST /api/shipments/{id}/bids` — place a bid (driver)
+  - `GET /api/shipments/{id}/bids` — list bids (shipper only, IDOR)
+  - `GET /api/shipments/{id}/bids/count` — count bids on a shipment
+  - `POST /api/shipments/{id}/bids/{bid_id}/accept` — accept a bid (shipper only)
+  - `POST /api/shipments/estimate-price` — AI price estimation (no auth required)
+
+### AI Pricing Engine
+
+**File:** `backend/app/services/pricing.py`
+
+**Pricing Formula:**
+```
+Total Price = (Distance × Rate/km) + Weight Charge + Vehicle Multiplier + Goods Multiplier + Fuel Cost + Tolls + Labour + Seasonal Demand
+```
+
+**Distance Tiers:**
+| Range | Rate/km |
+|-------|---------|
+| < 100 km | ₹18/km |
+| 100-500 km | ₹14/km |
+| 500+ km | ₹11/km |
+
+**Weight Tiers:**
+| Range | Rate/kg |
+|-------|---------|
+| < 500 kg | ₹0.5/kg |
+| 500-2000 kg | ₹0.4/kg |
+| 2000-5000 kg | ₹0.35/kg |
+| 5000+ kg | ₹0.3/kg |
+
+**Vehicle Multipliers:**
+| Vehicle | Multiplier |
+|---------|------------|
+| Tempo | 0.8x |
+| Mini Truck | 1.0x |
+| LCV | 1.2x |
+| Truck | 1.5x |
+| Multi-Axle | 1.8x |
+| Trailer | 2.2x |
+| Tanker | 1.7x |
+
+**Goods Multipliers:**
+| Category | Multiplier |
+|----------|------------|
+| General | 1.0x |
+| Electronics | 1.15x |
+| Fragile | 1.2x |
+| Hazmat | 1.25x |
+| Cold Chain | 1.3x |
+| Perishable | 1.1x |
+| Bulk | 0.9x |
+| Heavy Machinery | 1.4x |
+
+**Cost Components:**
+- **Fuel:** ₹90/L diesel, 4-8 km/L depending on vehicle
+- **Tolls:** ₹2/km average
+- **Labour:** ₹500-2000 base (varies by vehicle type)
+- **Seasonal:** Peak (Oct-Mar) 1.15x, Off-peak (Apr-Sep) 0.9x
+
+**Price Bounds:**
+- Floor = 70% of calculated total
+- Minimum = 85% of calculated total
+- Maximum = 125% of calculated total
+
+**Forced Price Flow:**
+1. Shipper fills all shipment fields
+2. Clicks "Check Price" → calls `POST /api/shipments/estimate-price`
+3. PriceConfirmDialog shows AI suggested range
+4. Shipper can use suggested price OR set custom price
+5. If custom price < 80% of floor price → error warning shown
+6. If shipper still insists → checkbox acknowledgment required
+7. Marked as `is_forced_price: true` in database
+8. Badge visible to admins only on ShipmentDetailView
 
 ### Frontend Composables
 - **`useAuth()`** — Singleton auth state (user, loading, fetchSession, signOut)
@@ -467,6 +590,14 @@ FastAPI dependency: get_current_user()
 - **`useAdminUsers()`** — TanStack Query for admin user list + suspend mutation (shared by AdminDashboard)
 - **`usePendingUsers()`** — TanStack Query for pending users + approve/reject mutations (shared by PendingUsers)
 - **`useVerificationList()`** — TanStack Query for admin verification list + approve/reject mutations (shared by AdminVerificationReview)
+- **`useShipments()`** — TanStack Query for shipment list (drivers see active, shippers see all their shipments)
+- **`useCreateShipment()`** — Mutation for creating new shipments
+- **`useShipmentDetail()`** — TanStack Query for single shipment details
+- **`useShipmentBids()`** — TanStack Query for shipment bids (shipper view)
+- **`usePlaceBid()`** — Mutation for drivers to place bids
+- **`useAcceptBid()`** — Mutation for shippers to accept bids
+- **`useUpdateShipmentStatus()`** — Mutation for updating shipment status (validated flow)
+- **`usePriceEstimate()`** — Mutation for AI price estimation (no auth required)
 
 ### TanStack Query Composable Pattern
 ```typescript
@@ -556,18 +687,24 @@ export function useVerificationStatus() {
 | Label | Form field labels |
 | Card | Login card, home dashboard cards |
 | Avatar | User avatar with fallback |
-| Badge | Role display |
+| Badge | Role display, status badges |
 | Separator | Visual dividers |
 | Tabs | Email/phone login switcher |
-| Checkbox | Remember me |
-| Alert | Error messages |
+| Checkbox | Remember me, forced price acknowledgment |
+| Alert | Error messages, price warnings |
 | RadioGroup | Role selection (driver/shipper) |
+| Select | Vehicle type, goods category selection |
+| Dialog | Price confirmation, bid review |
+| Textarea | Shipment description |
+| Collapsible | Price breakdown details |
+| ScrollArea | Bid list scroll |
 
 ### Layout Structure
-- **App.vue:** `min-h-screen flex flex-col bg-background` → NavBar → `<main class="flex-1">` → Footer
-- **NavBar:** Sticky (`sticky top-0 z-50 backdrop-blur-md`), role-based dashboard link, sign out button, Sign in button uses default primary teal background
-- **Footer:** Brand, 3 link columns (Product, Company, Legal), social icons, copyright
+- **App.vue:** `min-h-screen flex flex-col bg-background` → NavBar → `<main class="flex-1">` (no Footer)
+- **NavBar:** Sticky (`sticky top-0 z-50 backdrop-blur-md`), role-based dashboard link, sign out button, RoadLancer brand only visible when logged out, Dashboard text font size increased
+- **Footer:** Removed from all pages
 - **Login:** Centered card with role radio buttons, tabs (email/phone), social login
+- **Home:** Public marketing landing page (no auth required)
 
 ### Theme (Teal)
 - **Primary:** `oklch(0.511 0.096 186.391)` — teal blue-green
@@ -578,15 +715,54 @@ export function useVerificationStatus() {
 ### Pages
 | Route | Component | Access |
 |-------|-----------|--------|
-| `/` | HomeView | All authenticated users |
+| `/` | HomeView (Marketing Landing) | Public (all users) |
 | `/login` | LoginView | Guest only |
 | `/driver` | DriverDashboard | Driver only |
 | `/shipper` | ShipperDashboard | Shipper only |
-| `/get-validated` | GetValidated | Driver only |
-| `/get-validated-shipper` | GetValidated | Shipper only |
+| `/shipments/:id` | ShipmentDetailView | Authenticated users |
+| `/get-validated` | GetValidated | Driver or Shipper (dynamic form) |
 | `/admin` | AdminDashboard | Admin only |
+| `/admin/profile` | AdminProfile | Admin only |
 | `/admin/pending` | PendingUsers | Admin only |
 | `/admin/verifications` | AdminVerificationReview | Admin only |
+
+---
+
+## 🚚 7.5 Shipment & Bidding Flow
+
+### Shipper Flow
+```
+1. Click "Create Shipment" on ShipperDashboard
+2. Fill all fields (title, goods category, weight, pickup/dropoff, vehicle type)
+3. Click "Check Price" → AI pricing engine calculates suggested range
+4. PriceConfirmDialog shows:
+   - AI Floor Price, Suggested Price, Maximum Price
+   - Option: "Use Suggested Price" or "Set Custom Price"
+   - If custom < 80% of floor → error warning (cannot proceed)
+   - If custom ≥ 80% of floor but < floor → warning + checkbox acknowledgment
+5. Confirm → Shipment created with `is_forced_price` flag if applicable
+6. Wait for drivers to place bids
+7. Review bids → Accept best bid → Driver assigned
+8. Track transit status on ShipmentDetailView
+9. Mark as completed when delivered
+```
+
+### Driver Flow
+```
+1. View available shipments on DriverDashboard
+2. Click "View Details" → ShipmentDetailView
+3. Click "Submit Bid" → BidSubmissionDialog
+4. Enter bid amount (must be within shipper's minimum and maximum price limits)
+5. Submit → Shipper reviews
+6. If accepted → Shipment assigned to you
+7. Update status: Confirm Pickup → In Transit → Delivered
+8. Shipper marks as completed
+```
+
+### Admin Visibility
+- Admin sees all shipments in system
+- Admin sees "Forced Price" badge on shipments where shipper overrode AI pricing
+- Admin can view shipment details, bids, and status history
 
 ---
 
@@ -604,8 +780,7 @@ export function useVerificationStatus() {
 
 ## ⚠️ 9. Known Issues & Workarounds
 
-- **Prisma 7 (auth-server):** Requires `prisma-client` generator (not `prisma-client-js`), driver adapter (`@prisma/adapter-pg`), no `url` in schema (URL in `prisma.config.ts`)
-- **Python Prisma (`prisma-client-py`):** Still requires `url` in schema
+- **Prisma 7 & Python Prisma (`prisma-client-py`):** In Prisma 7 CLI, `url` is no longer supported inside `datasource db` in `schema.prisma`. Remove `url` from `schema.prisma`, configure `prisma.config.ts` for migrations/generation, and pass `datasource={'url': os.environ.get('DATABASE_URL')}` directly to the `Prisma()` constructor in Python (`backend/app/database.py`).
 - **`@vuehookform/core`:** Incompatible with Zod v4 — `extractSubSchema` traverses `_def.checks` causing runtime crashes. Use manual `safeParse()` instead
 - **Better Auth enum workaround:** `type: ["driver", "shipper"]` in `additionalFields`
 - **HttpOnly cookies:** Can't read in JS — removed router guards, auth composable handles all state
@@ -618,6 +793,26 @@ export function useVerificationStatus() {
 - **Old admin user:** If old admin user exists with role `driver`, login succeeds with driver radio button — delete stale users from DB
 - **Seed users must have passwords:** Users created via Prisma directly have no password hash — always register via `/api/auth/sign-up/email` endpoint
 - **401 interceptor login page:** Must check `window.location.pathname !== '/login'` before redirecting — prevents redirect loop when role-mismatch sign-out triggers a 401 during verification query
+- **Prisma Python (`prisma-client-py`) Limitations:** Does not support `select` or `include` keyword arguments in `find_unique` or `find_many`. Use `db.query_raw(...)` when selective projection or joins are required, and ensure raw date/time strings from SQL queries are properly handled before calling `.isoformat()`.
+- **Prisma Python Enums:** Generated models wrap enum fields in Python `Enum` objects; access them via `.value` when comparing strings or serializing to JSON.
+- **Admin Dashboard Card Stats / Tab Filtering:** In `useAdminUsers()`, always fetch all users without filtering by `role` on the backend so that client-side stats across all 8 summary cards never drop to 0 when clicking an individual card.
+- **No Direct Profile Edits for Admins:** For compliance and traceability, Admins should never arbitrarily edit verified driver or shipper profile data directly on the dashboard. Changes must strictly follow a user-initiated support ticket/email trail.
+- **Strict Soft Deletion / Suspension:** Never implement hard delete (`DELETE FROM ...`) endpoints for user accounts or verification records. Always use soft deletion (such as setting verification status to `rejected` or account status to `suspended`) to preserve audit trails, fraud logs, and historical traceability.
+- **Profile Edit Request Workflow:** When a verified driver or shipper needs to update their profile data, they must click "Request Profile Edit / Update" on their verification page and provide a support ticket reference / reason. This unlocks their form, submits an edit request (`isEditRequest: true`), sets their verification status back to `pending`, and flags the reason as `[PROFILE EDIT REQUEST]` for Admin review. When Admin approves, the user's main `user` table record (`name` and `phone`) is automatically synchronized.
+- **Shipment List Logic:** Backend `GET /api/shipments` returns ALL active shipments for drivers (not filtered by status). For shippers, it returns all their shipments (active, completed, cancelled) so they can see history.
+- **Status Update Validation:** Backend validates status transitions. Drivers can only update to: picked_up, in_transit, delivered. Shippers can only update to: completed, cancelled.
+- **AI Pricing is Rule-Based:** No LLM API calls — fast, free, deterministic. Diesel price fixed at ₹90/L. Tolls estimated at ₹2/km. Labour base ₹500-2000 by vehicle type.
+- **Forced Price Visibility:** `is_forced_price` flag is only visible to admins on ShipmentDetailView. Drivers and shippers cannot see this flag.
+- **Estimate Price Endpoint:** `POST /api/shipments/estimate-price` requires no authentication — called before shipment creation to show price range.
+- **TanStack Query / Vue Query Reactivity (`@tanstack/vue-query`):** When passing getter functions or reactive values to `useQuery` (e.g., `shipmentId`), always wrap `queryKey` and `enabled` in Vue `computed(() => ...)` properties. If passed as plain static arrays or booleans, they evaluate once on component creation and freeze forever (causing dialogs or child components mounted with initially null props to get permanently stuck with `enabled: false`).
+- **Prisma Python Relation Join Conflicts / Include Errors:** In `prisma-client-py`, querying models with `include={"relationName": True}` can fail with internal query errors if relation names conflict across models (e.g., `@relation("Driver")` on both `bids.driver` and `user.assignedShipments`). Since frontend serializers (`bid_to_dict`, `shipment_to_dict`) only require scalar foreign key IDs (`driver_id`, `shipment_id`), avoid unnecessary `include` arguments on `find_many` calls.
+- **Pending Login & Action Restriction Workflow:** Users with `pending` status are permitted to log in and access dashboards/verification pages without triggering 403 errors in `get_current_user`. Instead, functionality restriction is applied at the action layer: backend endpoints that modify state (`create_shipment`, `place_bid`, `accept_bid`, `update_shipment_status`) check `if user.get("status") != "approved"` and raise 403. In the UI, dashboards display an amber warning banner prompting verification submission and visually disable action buttons.
+- **Resolved SPA Navigation Freezes:** Vue Router would occasionally freeze during dev (HMR) or reactive state synchronization when navigating between dashboards and the verification forms. To ensure maximum reliability and bypass complex reactive route guards, navigation links across the NavBar, Dashboards, and Profiles have been converted to native HTML `<a>` tags, forcing a clean browser navigation.
+- **Admin Verification Data Parity:** The "Review Docs" modal in the Admin User Table originally showed empty credentials because it passed a stub object. It now fetches the full, authoritative data from `/api/verification/admin/list` before opening, ensuring it exactly matches the data model of the dedicated Verification Review page.
+- **Bid Upsert Logic:** The POST `/api/shipments/{id}/bids` endpoint intelligently acts as an upsert. If a driver has already placed a bid, it will update their existing bid rather than throwing a 400 error, allowing seamless quote revisions from the UI without complex POST/PUT conditionals.
+- **ShipperDashboard Shipments:** The frontend blindly trusts the backend's `list_shipments` endpoint to return ONLY the shipper's own shipments. Redundant frontend filtering by `shipper_id` has been removed to prevent hydration mismatches or typos (e.g. `shipperId` vs `shipper_id`) from hiding valid shipments.
+- **`openBidReviewDialog` → `openBidReview` Function Name Mismatch:** In `ShipperDashboard.vue`, the template referenced `openBidReviewDialog` but the function was defined as `openBidReview` (line 259). Fixed by renaming the function definition to match the template reference.
+- **DriverDashboard Missing `verificationStatus` Destructuring:** In `useVerificationStatus()` call, `verificationStatus` was not included in the destructuring. Fixed by adding `status: verificationStatus` to the destructured variables.
 
 ---
 
@@ -631,10 +826,15 @@ export function useVerificationStatus() {
 | `auth-server/seed.ts` | Database seeder — driver and shipper users |
 | `backend/app/main.py` | FastAPI app with CORS, logging, rate limit middleware (production only) |
 | `backend/app/middleware.py` | RequestLoggingMiddleware, RateLimitMiddleware |
+| `backend/app/database.py` | Prisma client initialization |
 | `backend/app/routes/auth.py` | Session-based auth via Bearer token → DB lookup |
-| `backend/app/routes/admin.py` | Admin user management — list/suspend/approve/reject |
+| `backend/app/routes/admin.py` | Admin auth dependency (`get_admin_user`) |
+| `backend/app/routes/users.py` | User management endpoints — list, suspend, pending, approve, reject |
 | `backend/app/routes/verification.py` | Verification submit (driver/shipper), status, admin review |
-| `backend/app/routes/shipments.py` | Shipment CRUD + bid routes |
+| `backend/app/routes/support.py` | Support ticket endpoints & inbound email webhook parser simulation |
+| `backend/app/routes/shipments.py` | Shipment CRUD, bids, status updates, AI pricing |
+| `backend/app/services/pricing.py` | AI-based pricing engine — rule-based with distance, weight, vehicle, goods, fuel, labour, seasonal factors |
+| `backend/prisma/schema.prisma` | Business schema — shipments, bids, user_verifications |
 | `frontend/src/style.css` | Tailwind v4 + shadcn teal theme + autofill overrides |
 | `frontend/src/router/index.ts` | Vue Router with auth + role navigation guards |
 | `frontend/src/composables/useAuth.ts` | Singleton composable — exports `user`, `loading`, `fetchSession` |
@@ -642,14 +842,34 @@ export function useVerificationStatus() {
 | `frontend/src/composables/useAdminUsers.ts` | TanStack Query composable — admin user list, suspend, pending/rejected counts |
 | `frontend/src/composables/usePendingUsers.ts` | TanStack Query composable — pending user list, approve/reject mutations |
 | `frontend/src/composables/useVerificationList.ts` | TanStack Query composable — admin verification list, approve/reject mutations |
+| `frontend/src/composables/useShipments.ts` | TanStack Query composable — shipment list query |
+| `frontend/src/composables/useCreateShipment.ts` | TanStack Query composable — create shipment mutation |
+| `frontend/src/composables/useShipmentDetail.ts` | TanStack Query composable — shipment detail, bids, assigned queries |
+| `frontend/src/composables/usePlaceBid.ts` | TanStack Query composable — place bid mutation |
+| `frontend/src/composables/useAcceptBid.ts` | TanStack Query composable — accept bid mutation |
+| `frontend/src/composables/useUpdateShipmentStatus.ts` | TanStack Query composable — status update mutation |
+| `frontend/src/composables/usePriceEstimate.ts` | TanStack Query composable — AI price estimation mutation |
+| `frontend/src/composables/useSupportTickets.ts` | TanStack Query composable — support tickets, inbound email simulation, and admin helpdesk |
 | `frontend/src/lib/api.ts` | Axios instance with Bearer token interceptor and 401 redirect |
-| `frontend/src/components/NavBar.vue` | Sticky nav — role dashboard link, sign out |
+| `frontend/src/components/NavBar.vue` | Sticky nav — RoadLancer brand only when logged out, Dashboard font size increased |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
+| `frontend/src/components/UsersTable.vue` | Extracted admin user management table component with role/status badges and suspend actions |
+| `frontend/src/components/FileUpload.vue` | Reusable image upload component for Base64 document attachments with thumbnail preview & validation |
+| `frontend/src/components/CreateShipmentDialog.vue` | Shipment creation form with all fields (title, goods, weight, pickup/dropoff, vehicle) |
+| `frontend/src/components/PriceConfirmDialog.vue` | Price confirmation pop-up — AI suggested range, custom price input, forced price warning |
+| `frontend/src/components/BidSubmissionDialog.vue` | Driver bid submission with floor price validation |
+| `frontend/src/components/BidReviewDialog.vue` | Shipper bid review/accept interface |
+| `frontend/src/components/SupportEmailSimulatorModal.vue` | Interactive helpdesk modal for simulating inbound emails to support@roadlancer.com and viewing tickets |
 | `frontend/src/views/LoginView.vue` | Role radio buttons, tabs, social login, Zod validation |
-| `frontend/src/views/HomeView.vue` | Dashboard — avatar, role badge, info cards |
-| `frontend/src/views/DriverDashboard.vue` | Driver-only page |
-| `frontend/src/views/ShipperDashboard.vue` | Shipper-only page |
-| `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (17 tests) |
+| `frontend/src/views/GetValidated.vue` | Multi-section accordion verification forms for Driver (DL, RC, Insurance, PUC) and Shipper (GST, PAN, Reg) with Base64 photo uploads |
+| `frontend/src/views/AdminVerificationReview.vue` | Admin review interface displaying expanded profile fields, document inspection lightbox, and rejection reasons |
+| `frontend/src/views/HomeView.vue` | Public marketing landing page — Hero, How It Works, Features, Stats, Trust Signals, CTA |
+| `frontend/src/views/DriverDashboard.vue` | Driver dashboard — assigned shipments tab, bid history, external links |
+| `frontend/src/views/ShipperDashboard.vue` | Shipper dashboard — KPIs, shipment list, create/review buttons |
+| `frontend/src/views/ShipmentDetailView.vue` | Shipment detail — status timeline, bid management, transit actions, AI price estimate |
+| `frontend/src/views/AdminDashboard.vue` | Admin dashboard — compact stats cards, role filtering & sorting selects, user table, forced price badge |
+| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view for reviewing tickets and inbound email webhook conversions |
+| `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (28 tests) |
 | `frontend/src/views/__tests__/renderDashboard.ts` | Shared test helper — wraps render with common stubs |
 
 ---
@@ -707,3 +927,62 @@ npm run test:unit:watch    # Watch mode
 ```
 
 **File location:** `frontend/src/views/__tests__/*.spec.ts`
+
+---
+
+## 📊 13. Completion Summary
+
+### What's Done (90%)
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| Auth System | ✅ | Better Auth server, login, sessions, role-based access, seed data |
+| Backend Routes | ✅ | 30+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email) |
+| AI Pricing Engine | ✅ | Rule-based with distance/weight/vehicle/goods/fuel/labour/seasonal factors |
+| Database Schema | ✅ | 9 models (users, sessions, shipments, bids, verifications, support_tickets, etc.) |
+| Frontend Views | ✅ | 13 views (all dashboards, login, register, home, shipment detail, verification, admin support desk) |
+| Frontend Composables | ✅ | 13 composables (all TanStack Query-based) |
+| Frontend Components | ✅ | 9 components (dialogs, tables, forms, nav, support email simulator) |
+| Shipment Flow | ✅ | Create → AI pricing → Price confirm → Bidding → Accept → Transit |
+| Support & Email Webhook | ✅ | Inbound email simulation to support@roadlancer.com converted to tickets with user account linking |
+| Forced Price Protection | ✅ | Shipper override with admin-only visibility |
+| Marketing Landing Page | ✅ | Public home page with features, how-it-works, stats |
+| User Registration | ✅ | Driver and Shipper registration with Zod validation & pending admin approval flow |
+| Testing | ✅ | 49 E2E tests + 28 unit tests passing |
+
+### What's Pending (~10%)
+
+#### Critical for Demo
+| Item | Impact | Effort |
+|------|--------|--------|
+| **OTP Verification** | `verifications` table exists but no backend routes | 4-6 hours |
+| **Charts/Analytics** | No chart library installed | 3-4 hours |
+
+#### Nice to Have
+| Item | Impact | Effort |
+|------|--------|--------|
+| Phone-based login | LoginView has phone tab but backend only supports email | 2-3 hours |
+| Bidding countdown timer | `bidding_ends_at` field exists but no UI timer | 1-2 hours |
+| `rejected/count` admin endpoint | Documented but not implemented | 30 mins |
+| Sample seed data | No sample shipments/bids for demo | 1-2 hours |
+
+### Phase Progress
+
+```
+Phase 0 (Setup)           ✅ 100%
+Phase 1 (Restructure)     ✅ 100%
+Phase 2 (Auth Server)     ✅ 100%
+Phase 3 (FastAPI Backend) ✅ 95%  (missing OTP routes)
+Phase 4 (Vue Frontend)    ✅ 95%  (missing charts/analytics)
+Phase 5 (Core Features)   ✅ 100% (missing OTP verification)
+Phase 6 (Polish)          ⬜ 0%   (not started)
+```
+
+### Recommendation
+
+**For college demo:** The core shipment + bidding + pricing + registration flow is fully functional. The remaining pieces (OTP, charts) are nice enhancements but not critical for demonstrating the main value proposition.
+
+**Next steps (in order):**
+1. Add sample seed data (1-2 hours) — makes demo more realistic
+2. Add OTP verification (4-6 hours) — completes the shipment lifecycle
+3. Add charts/analytics (3-4 hours) — improves dashboard visual appeal

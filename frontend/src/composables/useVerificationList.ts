@@ -61,11 +61,33 @@ export function useVerificationList() {
     },
   })
 
+  const resetPendingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.post(`/verification/admin/${id}/reset-pending`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-verifications'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-verification-count'] })
+    },
+  })
+
+  const resetAllPendingMutation = useMutation({
+    mutationFn: async () => {
+      await api.post('/verification/admin/reset-all-pending')
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-verifications'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-verification-count'] })
+    },
+  })
+
   return {
     ...query,
     searchQuery,
     activeTab,
     approveMutation,
     rejectMutation,
+    resetPendingMutation,
+    resetAllPendingMutation,
   }
 }

@@ -47,7 +47,7 @@ export const auth = betterAuth({
       status: {
         type: ["pending", "approved", "rejected"],
         required: false,
-        defaultValue: "pending",
+        defaultValue: "approved",
         input: true,
       },
     },
