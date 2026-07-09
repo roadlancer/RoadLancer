@@ -291,17 +291,29 @@ function openLightbox(title: string, src: string) {
       </div>
 
       <DialogFooter class="gap-2 pt-4 border-t flex flex-col sm:flex-row sm:justify-between items-center w-full">
+        <!-- Approved State: AI Score & Admin Verified (No Reset to Pending allowed) -->
+        <div
+          v-if="selectedVerification?.status === 'approved'"
+          class="flex items-center gap-2 text-xs font-semibold text-green-700 dark:text-green-400 mr-auto py-1 px-2.5 bg-green-500/10 rounded-lg border border-green-500/20"
+        >
+          <CheckCircle2 class="size-4 text-green-600 dark:text-green-400 shrink-0" />
+          <span>Documents Verified by AI Score & Admin (No Reset Needed)</span>
+        </div>
+
+        <!-- Rejected State: Option to Reset to Pending for re-submission -->
         <Button
-          v-if="showActions && selectedVerification?.status !== 'pending'"
+          v-else-if="showActions && selectedVerification?.status === 'rejected'"
           variant="outline"
           size="sm"
-          class="text-amber-700 border-amber-300 hover:bg-amber-50 w-full sm:w-auto"
+          class="text-amber-700 border-amber-300 hover:bg-amber-50 w-full sm:w-auto mr-auto"
           @click="emit('resetPending', selectedVerification?.id)"
         >
           <Clock class="size-4 mr-1.5" />
           Reset to Pending
         </Button>
-        <div v-else-if="showActions" class="flex gap-2 w-full sm:w-auto justify-end ml-auto">
+
+        <!-- Pending State: Approve or Reject Actions -->
+        <div v-else-if="showActions && selectedVerification?.status === 'pending'" class="flex gap-2 w-full sm:w-auto justify-end ml-auto">
           <Button
             variant="outline"
             class="border-destructive text-destructive hover:bg-destructive/10"
@@ -318,7 +330,9 @@ function openLightbox(title: string, src: string) {
             Approve Verification
           </Button>
         </div>
-        <Button v-else variant="outline" @click="emit('update:open', false)">Close</Button>
+
+        <!-- Always show Close button -->
+        <Button variant="outline" @click="emit('update:open', false)" class="ml-auto">Close</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

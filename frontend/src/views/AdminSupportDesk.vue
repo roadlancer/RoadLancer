@@ -62,6 +62,7 @@ const isInspectOpen = ref(false)
 const replyNotes = ref('')
 const replyStatus = ref<'open' | 'in_progress' | 'resolved' | 'closed'>('open')
 const replyPriority = ref<'low' | 'normal' | 'high' | 'urgent'>('normal')
+const replyCategory = ref<string>('general')
 const replyAgentId = ref<string>('')
 const replyAgentName = ref<string>('')
 const agentFilter = ref<string>('all')
@@ -96,6 +97,7 @@ function openInspect(ticket: SupportTicket) {
   replyAgentName.value = parsed.agentName || ''
   replyStatus.value = ticket.status
   replyPriority.value = ticket.priority
+  replyCategory.value = ticket.category || 'general'
   isInspectOpen.value = true
 }
 
@@ -110,6 +112,7 @@ async function handleSaveReply() {
     const updated = await updateStatus({
       id: selectedTicket.value.id,
       status: replyStatus.value,
+      category: replyCategory.value,
       adminNotes: formattedNotes,
       priority: replyPriority.value,
     })
@@ -118,6 +121,24 @@ async function handleSaveReply() {
     isInspectOpen.value = false
   } catch (err: any) {
     alert(err?.response?.data?.detail || 'Failed to update ticket.')
+  }
+}
+
+async function handleInlineStatus({ ticket, status }: { ticket: SupportTicket; status: string }) {
+  try {
+    await updateStatus({ id: ticket.id, status })
+    alert(`Ticket #${ticket.ticket_number} status updated to ${status.replace('_', ' ')}`)
+  } catch (err: any) {
+    alert(err?.response?.data?.detail || 'Failed to update status.')
+  }
+}
+
+async function handleInlineCategory({ ticket, category }: { ticket: SupportTicket; category: string }) {
+  try {
+    await updateStatus({ id: ticket.id, category })
+    alert(`Ticket #${ticket.ticket_number} category updated to ${category}`)
+  } catch (err: any) {
+    alert(err?.response?.data?.detail || 'Failed to update category.')
   }
 }
 
@@ -387,6 +408,8 @@ function getStatusBadgeClass(status: string) {
             @inspect="openInspect"
             @resolve="handleQuickResolve"
             @assign="handleQuickAssign"
+            @update-status="handleInlineStatus"
+            @update-category="handleInlineCategory"
           />
         </CardContent>
       </Card>
@@ -483,9 +506,9 @@ function getStatusBadgeClass(status: string) {
                 </div>
               </div>
 
-              <div class="grid grid-cols-2 gap-3">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div class="space-y-1">
-                  <Label class="text-xs font-semibold text-foreground">Update Status</Label>
+                  <Label class="text-xs font-semibold text-foreground">Status</Label>
                   <select
                     v-model="replyStatus"
                     class="w-full h-9 px-3 bg-background border border-input rounded-lg text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -494,6 +517,20 @@ function getStatusBadgeClass(status: string) {
                     <option value="in_progress">In Progress</option>
                     <option value="resolved">Resolved</option>
                     <option value="closed">Closed</option>
+                  </select>
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-xs font-semibold text-foreground">Category</Label>
+                  <select
+                    v-model="replyCategory"
+                    class="w-full h-9 px-3 bg-background border border-input rounded-lg text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="general">General</option>
+                    <option value="verification">Verification</option>
+                    <option value="billing">Billing</option>
+                    <option value="shipments">Shipments</option>
+                    <option value="technical">Technical</option>
+                    <option value="account">Account</option>
                   </select>
                 </div>
                 <div class="space-y-1">
