@@ -214,7 +214,14 @@ async def create_web_ticket(
 
 
 
-def sort_tickets_list(tickets: list, sort_by: Optional[str] = "newest") -> list:
+def sort_tickets_list(
+    tickets: list,
+    sort_by: Optional[str] = "newest",
+    sort_field: Optional[str] = None,
+    sort_order: Optional[str] = "desc",
+) -> list:
+    """Sort tickets. If sort_field is provided (from TanStack Table column clicks),
+    it takes priority over the legacy sort_by dropdown."""
     from datetime import datetime
 
     def get_timestamp(t):
@@ -231,6 +238,50 @@ def sort_tickets_list(tickets: list, sort_by: Optional[str] = "newest") -> list:
     priority_map = {"urgent": 4, "high": 3, "normal": 2, "low": 1}
     status_map = {"open": 4, "in_progress": 3, "resolved": 2, "closed": 1}
 
+    # --- Per-column sorting (TanStack Table) takes priority ---
+    if sort_field:
+        is_desc = sort_order == "desc"
+
+        field_to_attr = {
+            "ticket_number": "ticketNumber",
+            "sender_email": "senderEmail",
+            "subject": "subject",
+            "source": "source",
+            "priority": None,   # weighted
+            "status": None,     # weighted
+            "created_at": None, # timestamp
+        }
+
+        if sort_field == "priority":
+            tickets.sort(
+                key=lambda t: (
+                    priority_map.get(getattr(t, "priority", "normal") or "normal", 0),
+                    get_timestamp(t),
+                ),
+                reverse=is_desc,
+            )
+        elif sort_field == "status":
+            tickets.sort(
+                key=lambda t: (
+                    status_map.get(getattr(t, "status", "open") or "open", 0),
+                    get_timestamp(t),
+                ),
+                reverse=is_desc,
+            )
+        elif sort_field == "created_at":
+            tickets.sort(key=lambda t: get_timestamp(t), reverse=is_desc)
+        elif sort_field in field_to_attr:
+            attr = field_to_attr[sort_field]
+            tickets.sort(
+                key=lambda t: (getattr(t, attr, "") or "").lower(),
+                reverse=is_desc,
+            )
+        else:
+            # Unknown field — fall back to newest
+            tickets.sort(key=lambda t: get_timestamp(t), reverse=True)
+        return tickets
+
+    # --- Legacy sort_by dropdown ---
     if sort_by == "oldest":
         tickets.sort(key=lambda t: get_timestamp(t), reverse=False)
     elif sort_by == "priority":
@@ -249,6 +300,8 @@ async def get_my_tickets(
     source: Optional[str] = None,
     search: Optional[str] = None,
     sort_by: Optional[str] = "newest",
+    sort_field: Optional[str] = None,
+    sort_order: Optional[str] = "desc",
     user: dict = Depends(get_current_user),
 ):
     """
@@ -276,7 +329,7 @@ async def get_my_tickets(
             or search_lower in (t.message or "").lower()
         ]
 
-    my_tickets = sort_tickets_list(my_tickets, sort_by)
+    my_tickets = sort_tickets_list(my_tickets, sort_by, sort_field, sort_order)
 
     db_user = await db.user.find_unique(where={"id": user["id"]})
     user_map = {user["id"]: db_user} if db_user else {}
@@ -289,6 +342,8 @@ async def admin_list_tickets(
     source: Optional[str] = None,
     search: Optional[str] = None,
     sort_by: Optional[str] = "newest",
+    sort_field: Optional[str] = None,
+    sort_order: Optional[str] = "desc",
     admin: dict = Depends(get_admin_user),
 ):
     """
@@ -316,7 +371,7 @@ async def admin_list_tickets(
             or search_lower in (t.message or "").lower()
         ]
 
-    tickets = sort_tickets_list(tickets, sort_by)
+    tickets = sort_tickets_list(tickets, sort_by, sort_field, sort_order)
 
     users = await db.user.find_many()
     user_map = {u.id: u for u in users}
@@ -368,3 +423,14 @@ async def admin_update_ticket_status(
     users = await db.user.find_many()
     user_map = {u.id: u for u in users}
     return ticket_to_dict(updated_ticket, user_map)
+
+
+@router.post("/admin/seed-tickets")
+async def admin_seed_tickets(admin: dict = Depends(get_admin_user)):
+    """
+    Admin endpoint to clean existing support tickets and generate 100 diversified, real-life demo tickets.
+    """
+    import seed_tickets
+    await seed_tickets.seed_100_tickets()
+    return {"success": True, "message": "Cleaned and generated 100 diversified support tickets."}
+

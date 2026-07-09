@@ -2,7 +2,7 @@
 import { useAuth } from '@/composables/useAuth'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Truck, LayoutDashboard, LogOut, ShieldCheck, Clock } from '@lucide/vue'
+import { Truck, LayoutDashboard, LogOut, ShieldCheck } from '@lucide/vue'
 import { ref } from 'vue'
 import SupportEmailSimulatorModal from '@/components/SupportEmailSimulatorModal.vue'
 

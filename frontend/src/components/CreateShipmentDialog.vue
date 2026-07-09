@@ -272,7 +272,7 @@ function resetForm() {
   <!-- Price Confirmation Dialog -->
   <PriceConfirmDialog
     :open="showPriceConfirm"
-    :estimate="priceEstimate.data.value"
+    :estimate="priceEstimate.data.value || null"
     :loading="priceEstimate.isPending.value"
     @update:open="showPriceConfirm = $event"
     @confirm="handlePriceConfirm"

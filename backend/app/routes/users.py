@@ -35,14 +35,23 @@ def user_to_dict(u) -> dict:
 async def list_users(
     role: Optional[str] = None,
     search: Optional[str] = None,
+    sort_field: Optional[str] = None,
+    sort_order: Optional[str] = "desc",
     admin: dict = Depends(get_admin_user),
 ):
     where = {}
     if role and role in ("driver", "shipper", "admin"):
         where["role"] = role
 
+    order_dict = {}
+    valid_sorts = {"created_at": "createdAt", "name": "name", "email": "email", "role": "role", "status": "status"}
+    if sort_field and sort_field in valid_sorts:
+        order_dict = {valid_sorts[sort_field]: "asc" if (sort_order or "").lower() == "asc" else "desc"}
+    else:
+        order_dict = {"createdAt": "desc"}
+
     if search:
-        users = await db.user.find_many(where=where)
+        users = await db.user.find_many(where=where, order=order_dict)
         search_lower = search.lower()
         users = [
             u for u in users
@@ -50,7 +59,7 @@ async def list_users(
             or search_lower in (u.email or "").lower()
         ]
     else:
-        users = await db.user.find_many(where=where)
+        users = await db.user.find_many(where=where, order=order_dict)
 
     verifications = await db.query_raw('SELECT user_id as "userId", status FROM user_verifications')
     verif_map = {v.get("userId") if isinstance(v, dict) else v.userId: ((v.get("status").value if hasattr(v.get("status"), "value") else v.get("status")) if isinstance(v, dict) else (v.status.value if hasattr(v.status, "value") else v.status)) for v in verifications}

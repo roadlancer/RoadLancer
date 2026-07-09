@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { User, ShieldCheck, Clock, CheckCircle2, XCircle, ArrowRight, Truck, Package } from '@lucide/vue'
+import { ShieldCheck, Clock, CheckCircle2, XCircle, ArrowRight, Truck, Package } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()

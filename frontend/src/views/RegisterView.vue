@@ -1,9 +1,8 @@
 <script lang="ts" setup>
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
 import { z } from 'zod'
-import { signUp, authClient } from '@/lib/auth-client'
-import { user, fetchSession } from '@/composables/useAuth'
+import { signUp } from '@/lib/auth-client'
+import { fetchSession } from '@/composables/useAuth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,9 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { LoaderCircle, Mail, Lock, Phone, User as UserIcon, AlertCircle, Truck, Package, CheckCircle, ArrowLeft, Eye, EyeOff } from '@lucide/vue'
-
-const router = useRouter()
+import { LoaderCircle, Mail, Lock, Phone, User as UserIcon, AlertCircle, Truck, Package, CheckCircle, Eye, EyeOff } from '@lucide/vue'
 
 const submitError = ref('')
 const submitting = ref(false)

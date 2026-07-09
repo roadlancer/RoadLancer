@@ -31,17 +31,32 @@ export function useMyTickets() {
   const searchQuery = ref('')
   const statusFilter = ref('all')
   const sortBy = ref('newest')
+  const sortField = ref<string | null>(null)
+  const sortOrder = ref<'asc' | 'desc'>('desc')
 
   const queryKey = computed(() => [
     'my-support-tickets',
     user.value?.id,
-    { search: searchQuery.value, status: statusFilter.value, sort_by: sortBy.value },
+    {
+      search: searchQuery.value,
+      status: statusFilter.value,
+      sort_by: sortBy.value,
+      sort_field: sortField.value,
+      sort_order: sortOrder.value,
+    },
   ])
 
   const query = useQuery({
     queryKey,
     queryFn: async () => {
-      const params: Record<string, string> = { sort_by: sortBy.value }
+      const params: Record<string, string> = {}
+      // When sort_field is set (TanStack column click), use it; otherwise fall back to legacy sort_by
+      if (sortField.value) {
+        params.sort_field = sortField.value
+        params.sort_order = sortOrder.value
+      } else {
+        params.sort_by = sortBy.value
+      }
       if (statusFilter.value !== 'all') params.status = statusFilter.value
       if (searchQuery.value) params.search = searchQuery.value
       const { data } = await api.get('/support/tickets/my', { params })
@@ -58,6 +73,8 @@ export function useMyTickets() {
     searchQuery,
     statusFilter,
     sortBy,
+    sortField,
+    sortOrder,
   }
 }
 
@@ -67,16 +84,32 @@ export function useAdminTickets() {
   const statusFilter = ref('all')
   const sourceFilter = ref('all')
   const sortBy = ref('newest')
+  const sortField = ref<string | null>(null)
+  const sortOrder = ref<'asc' | 'desc'>('desc')
 
   const queryKey = computed(() => [
     'admin-support-tickets',
-    { search: searchQuery.value, status: statusFilter.value, source: sourceFilter.value, sort_by: sortBy.value },
+    {
+      search: searchQuery.value,
+      status: statusFilter.value,
+      source: sourceFilter.value,
+      sort_by: sortBy.value,
+      sort_field: sortField.value,
+      sort_order: sortOrder.value,
+    },
   ])
 
   const query = useQuery({
     queryKey,
     queryFn: async () => {
-      const params: Record<string, string> = { sort_by: sortBy.value }
+      const params: Record<string, string> = {}
+      // When sort_field is set (TanStack column click), use it; otherwise fall back to legacy sort_by
+      if (sortField.value) {
+        params.sort_field = sortField.value
+        params.sort_order = sortOrder.value
+      } else {
+        params.sort_by = sortBy.value
+      }
       if (statusFilter.value !== 'all') params.status = statusFilter.value
       if (sourceFilter.value !== 'all') params.source = sourceFilter.value
       if (searchQuery.value) params.search = searchQuery.value
@@ -127,6 +160,18 @@ export function useAdminTickets() {
     },
   })
 
+  const seedTicketsMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post('/support/admin/seed-tickets')
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-support-counts'] })
+      queryClient.invalidateQueries({ queryKey: ['my-support-tickets'] })
+    },
+  })
+
   return {
     tickets: query.data,
     isLoading: query.isLoading,
@@ -137,8 +182,12 @@ export function useAdminTickets() {
     statusFilter,
     sourceFilter,
     sortBy,
+    sortField,
+    sortOrder,
     updateStatus: updateStatusMutation.mutateAsync,
     isUpdating: updateStatusMutation.isPending,
+    seedTickets: seedTicketsMutation.mutateAsync,
+    isSeeding: seedTicketsMutation.isPending,
   }
 }
 

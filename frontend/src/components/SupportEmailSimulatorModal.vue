@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useAuth } from '@/composables/useAuth'
-import { useMyTickets, useSupportMutations, type SupportTicket } from '@/composables/useSupportTickets'
+import { useMyTickets, useSupportMutations } from '@/composables/useSupportTickets'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

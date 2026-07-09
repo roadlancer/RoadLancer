@@ -14,7 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import FileUpload from '@/components/FileUpload.vue'
 import {
   LoaderCircle, CheckCircle2, XCircle, Clock, ShieldCheck, ArrowLeft,
-  Truck, FileText, UserCheck, ShieldAlert, ChevronDown, ChevronUp
+  FileText, ChevronDown, ChevronUp
 } from '@lucide/vue'
 import SupportEmailSimulatorModal from '@/components/SupportEmailSimulatorModal.vue'
 

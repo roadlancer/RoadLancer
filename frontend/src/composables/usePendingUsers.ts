@@ -10,6 +10,7 @@ export interface PendingUser {
   phone: string | null
   suspended: boolean
   status: string
+  verification_status?: string | null
   created_at: string | null
 }
 

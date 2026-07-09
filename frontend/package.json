@@ -17,6 +17,7 @@
     "@lucide/vue": "^1.22.0",
     "@noble/hashes": "^2.2.0",
     "@tanstack/vue-query": "^5.101.2",
+    "@tanstack/vue-table": "^8.21.3",
     "@vuehookform/core": "^0.7.0",
     "@vueuse/core": "^14.3.0",
     "axios": "^1.9.0",

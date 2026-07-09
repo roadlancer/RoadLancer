@@ -12,8 +12,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { Skeleton } from '@/components/ui/skeleton'
-import { LoaderCircle, Clock, Search, AlertCircle, CheckCircle, XCircle, ArrowLeft } from '@lucide/vue'
+import { LoaderCircle, Search, AlertCircle, CheckCircle, XCircle, ArrowLeft } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()

@@ -6,6 +6,7 @@ export interface VerificationRecord {
   id: string
   userId: string
   userName: string
+  fullName?: string | null
   userEmail: string
   userRole: string
   status: string

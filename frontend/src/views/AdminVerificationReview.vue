@@ -266,17 +266,6 @@ function statusColor(status: string) {
         </DialogContent>
       </Dialog>
 
-      <!-- Lightbox Dialog -->
-      <Dialog :open="!!lightboxImage" @update:open="lightboxImage = null">
-        <DialogContent class="sm:max-w-4xl md:max-w-5xl lg:max-w-6xl w-[95vw] max-h-[94vh] p-4 bg-background">
-          <DialogHeader>
-            <DialogTitle>{{ lightboxTitle }}</DialogTitle>
-          </DialogHeader>
-          <div class="flex items-center justify-center max-h-[75vh] overflow-hidden bg-muted/30 rounded-lg p-2">
-            <img v-if="lightboxImage" :src="lightboxImage" class="max-w-full max-h-[72vh] object-contain rounded" />
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   </div>
 </template>
