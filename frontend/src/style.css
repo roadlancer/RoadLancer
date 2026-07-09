@@ -126,6 +126,9 @@
     @apply bg-background text-foreground;
     @apply font-sans;
     }
+  a {
+    @apply text-foreground hover:underline;
+    }
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus,

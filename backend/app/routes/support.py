@@ -396,6 +396,35 @@ async def admin_ticket_counts(admin: dict = Depends(get_admin_user)):
     }
 
 
+@router.get("/admin/{ticket_id}")
+async def admin_get_ticket(
+    ticket_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    """
+    Admin endpoint to get a single ticket by ID or Ticket Number.
+    """
+    clean_id = ticket_id.strip()
+    ticket = await db.support_tickets.find_first(
+        where={
+            "OR": [
+                {"id": clean_id},
+                {"ticketNumber": clean_id},
+            ]
+        }
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail=f"Ticket not found ({clean_id})")
+
+    user_map = {}
+    if ticket.userId:
+        user = await db.user.find_unique(where={"id": ticket.userId})
+        if user:
+            user_map[user.id] = user
+
+    return ticket_to_dict(ticket, user_map)
+
+
 @router.put("/admin/{ticket_id}/status")
 async def admin_update_ticket_status(
     ticket_id: str,
@@ -405,7 +434,15 @@ async def admin_update_ticket_status(
     """
     Admin endpoint to update ticket status, priority, and notes.
     """
-    ticket = await db.support_tickets.find_unique(where={"id": ticket_id})
+    clean_id = ticket_id.strip()
+    ticket = await db.support_tickets.find_first(
+        where={
+            "OR": [
+                {"id": clean_id},
+                {"ticketNumber": clean_id},
+            ]
+        }
+    )
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
@@ -416,7 +453,7 @@ async def admin_update_ticket_status(
         data_to_update["priority"] = req.priority
 
     updated_ticket = await db.support_tickets.update(
-        where={"id": ticket_id},
+        where={"id": ticket.id},
         data=data_to_update,
     )
 

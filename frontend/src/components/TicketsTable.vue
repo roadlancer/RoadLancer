@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   useVueTable,
   getCoreRowModel,
@@ -31,6 +32,8 @@ const props = defineProps<{
   loading?: boolean
   sorting: SortingState
 }>()
+
+const router = useRouter()
 
 const emit = defineEmits<{
   (e: 'inspect', ticket: SupportTicket): void
@@ -280,7 +283,11 @@ const table = useVueTable({
               </div>
             </td>
             <!-- Subject -->
-            <td class="py-3.5 px-2.5 sm:px-3 font-bold text-foreground max-w-[180px] sm:max-w-[220px] truncate">
+            <td
+              class="py-3.5 px-2.5 sm:px-3 font-bold text-foreground max-w-[180px] sm:max-w-[220px] truncate hover:text-primary cursor-pointer transition-colors"
+              @click="router.push(`/admin/support/${row.original.id}`)"
+              title="Click to view ticket details in separate page"
+            >
               {{ row.original.subject }}
             </td>
             <!-- Source -->
@@ -335,7 +342,7 @@ const table = useVueTable({
                   variant="outline"
                   size="sm"
                   class="h-7 px-2.5 text-[11px] font-bold shadow-2xs"
-                  @click="emit('inspect', row.original)"
+                  @click="router.push(`/admin/support/${row.original.id}`)"
                 >
                   Inspect
                 </Button>
