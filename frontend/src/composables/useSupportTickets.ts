@@ -11,6 +11,7 @@ export interface SupportTicket {
   sender_name: string | null
   subject: string
   message: string
+  category?: string
   status: 'open' | 'in_progress' | 'resolved' | 'closed'
   priority: 'low' | 'normal' | 'high' | 'urgent'
   source: 'email' | 'web' | 'profile_edit'
@@ -194,16 +195,19 @@ export function useAdminTickets() {
     mutationFn: async ({
       id,
       status,
+      category,
       adminNotes,
       priority,
     }: {
       id: string
-      status: string
+      status?: string
+      category?: string
       adminNotes?: string
       priority?: string
     }) => {
       const { data } = await api.put(`/support/admin/${id}/status`, {
         status,
+        category,
         admin_notes: adminNotes,
         priority,
       })

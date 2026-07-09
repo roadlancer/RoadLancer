@@ -234,6 +234,7 @@ model support_tickets {
   senderName   String?  @map("sender_name")
   subject      String
   message      String
+  category     String   @default("general")
   status       String   @default("open")
   priority     String   @default("normal")
   source       String   @default("email")

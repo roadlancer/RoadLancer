@@ -523,10 +523,17 @@ async def reset_verification_to_pending(
     verification_id: str,
     admin: dict = Depends(get_admin_user),
 ):
-    """Admin utility to soft-reset an approved or rejected verification back to pending."""
+    """Admin utility to soft-reset a rejected verification back to pending."""
     verification = await db.user_verifications.find_unique(where={"id": verification_id})
     if not verification:
         raise HTTPException(status_code=404, detail="Verification not found")
+
+    current_status = verification.status.value if hasattr(verification.status, "value") else verification.status
+    if current_status == "approved":
+        raise HTTPException(
+            status_code=400,
+            detail="Approved verifications cannot be reset to pending since documents are verified by AI & Admin."
+        )
 
     updated = await db.user_verifications.update(
         where={"id": verification_id},
@@ -543,9 +550,9 @@ async def reset_verification_to_pending(
 async def reset_all_verifications_to_pending(
     admin: dict = Depends(get_admin_user),
 ):
-    """Admin utility to soft-reset all verification records back to pending so users can fill required data."""
+    """Admin utility to soft-reset rejected verification records back to pending without touching approved users."""
     count = await db.user_verifications.update_many(
-        where={},
+        where={"status": "rejected"},
         data={
             "status": "pending",
             "reviewedBy": None,

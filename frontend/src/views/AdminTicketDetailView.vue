@@ -41,6 +41,7 @@ const { data: adminUsers } = useAdminUsers()
 const replyNotes = ref('')
 const replyStatus = ref<'open' | 'in_progress' | 'resolved' | 'closed'>('open')
 const replyPriority = ref<'low' | 'normal' | 'high' | 'urgent'>('normal')
+const replyCategory = ref<string>('general')
 const replyAgentId = ref<string>('')
 const replyAgentName = ref<string>('')
 const isSaving = ref(false)
@@ -62,6 +63,7 @@ watch(ticket, (t) => {
     replyAgentName.value = parsed.agentName || ''
     replyStatus.value = t.status
     replyPriority.value = t.priority
+    replyCategory.value = t.category || 'general'
   }
 }, { immediate: true })
 
@@ -113,6 +115,7 @@ async function handleSave() {
     const updated = await updateStatus({
       id: ticket.value.id,
       status: replyStatus.value,
+      category: replyCategory.value,
       adminNotes: formattedNotes,
       priority: replyPriority.value,
     })
@@ -154,6 +157,9 @@ async function quickResolve() {
           </span>
           <Badge :class="['text-xs uppercase px-2.5 py-0.5 border font-bold', getPriorityBadgeClass(ticket.priority)]">
             {{ ticket.priority }} Priority
+          </Badge>
+          <Badge variant="outline" class="bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30 text-xs px-2.5 py-0.5 font-bold uppercase">
+            Category: {{ ticket.category || 'general' }}
           </Badge>
           <Badge :class="['text-xs uppercase px-2.5 py-0.5 border font-bold', getStatusBadgeClass(ticket.status)]">
             {{ ticket.status.replace('_', ' ') }}
@@ -354,6 +360,24 @@ async function quickResolve() {
                 <option value="in_progress">In Progress (Investigating)</option>
                 <option value="resolved">Resolved (Complete)</option>
                 <option value="closed">Closed (Archived)</option>
+              </select>
+            </div>
+
+            <!-- Category Select -->
+            <div class="space-y-2">
+              <label class="text-xs font-bold text-foreground uppercase tracking-wider block">
+                Ticket Category
+              </label>
+              <select
+                v-model="replyCategory"
+                class="w-full h-10 px-3 bg-background border border-input rounded-xl text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+              >
+                <option value="general">General Inquiry</option>
+                <option value="verification">KYC & Verification</option>
+                <option value="billing">Billing & Payments</option>
+                <option value="shipments">Shipment & Delivery</option>
+                <option value="technical">Technical & App Issue</option>
+                <option value="account">Profile & Account</option>
               </select>
             </div>
 

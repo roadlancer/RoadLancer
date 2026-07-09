@@ -16,6 +16,7 @@ class InboundEmailRequest(BaseModel):
     from_name: Optional[str] = None
     subject: str
     body: str
+    category: Optional[str] = "general"
     priority: Optional[str] = "normal"
     source: Optional[str] = "email"
     secret: Optional[str] = None
@@ -24,12 +25,14 @@ class InboundEmailRequest(BaseModel):
 class CreateTicketRequest(BaseModel):
     subject: str
     message: str
+    category: Optional[str] = "general"
     priority: Optional[str] = "normal"
     source: Optional[str] = "web"
 
 
 class UpdateTicketStatusRequest(BaseModel):
-    status: str
+    status: Optional[str] = None
+    category: Optional[str] = None
     admin_notes: Optional[str] = None
     priority: Optional[str] = None
 
@@ -54,6 +57,7 @@ def ticket_to_dict(t, user_map=None) -> dict:
         "sender_name": t.senderName,
         "subject": t.subject,
         "message": t.message,
+        "category": getattr(t, "category", "general") or "general",
         "status": t.status,
         "priority": t.priority,
         "source": t.source,
@@ -145,6 +149,7 @@ async def simulate_inbound_email(
                     "senderName": sender_name,
                     "subject": req.subject,
                     "message": req.body,
+                    "category": req.category or "general",
                     "priority": req.priority or "normal",
                     "source": req.source or "email",
                     "userId": user_id,
@@ -200,6 +205,7 @@ async def create_web_ticket(
             "senderName": user.get("name") or user["email"],
             "subject": req.subject,
             "message": req.message,
+            "category": req.category or "general",
             "priority": req.priority or "normal",
             "source": req.source or "web",
             "userId": user["id"],
@@ -446,11 +452,20 @@ async def admin_update_ticket_status(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    data_to_update = {"status": req.status}
+    data_to_update = {}
+    if req.status is not None:
+        data_to_update["status"] = req.status
+    if req.category is not None:
+        data_to_update["category"] = req.category
     if req.admin_notes is not None:
         data_to_update["adminNotes"] = req.admin_notes
     if req.priority is not None:
         data_to_update["priority"] = req.priority
+
+    if not data_to_update:
+        users = await db.user.find_many()
+        user_map = {u.id: u for u in users}
+        return ticket_to_dict(ticket, user_map)
 
     updated_ticket = await db.support_tickets.update(
         where={"id": ticket.id},

@@ -96,6 +96,7 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
       expect(screen.getByText('Ticket #')).toBeInTheDocument()
       expect(screen.getByText('Subject')).toBeInTheDocument()
       expect(screen.getByText('Source')).toBeInTheDocument()
+      expect(screen.getByText('Category')).toBeInTheDocument()
       expect(screen.getByText('Priority')).toBeInTheDocument()
       expect(screen.getByText('Status')).toBeInTheDocument()
       expect(screen.getByText('Assigned Agent')).toBeInTheDocument()
@@ -145,8 +146,8 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
         },
       })
 
-      const selects = screen.getAllByRole('combobox')
-      expect(selects.length).toBeGreaterThanOrEqual(2)
+      const selects = screen.getAllByLabelText('Change assigned agent')
+      expect(selects.length).toBe(2)
 
       // First ticket has no assigned agent in admin_notes, so default value should be empty string
       expect((selects[0] as HTMLSelectElement).value).toBe('')
@@ -162,7 +163,7 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
         },
       })
 
-      const selects = screen.getAllByRole('combobox')
+      const selects = screen.getAllByLabelText('Change assigned agent')
       const firstSelect = selects[0]
 
       // Select Sarah Jenkins (Support Lead)
@@ -187,7 +188,7 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
         },
       })
 
-      const selects = screen.getAllByRole('combobox')
+      const selects = screen.getAllByLabelText('Change assigned agent')
       const secondSelect = selects[1] // Currently assigned to Vikram Mehta
 
       await fireEvent.change(secondSelect, { target: { value: '' } })
@@ -254,6 +255,103 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
       )
 
       expect(updated).toBe('[ASSIGNED_TO:admin-lead|Sarah Jenkins (Support Lead)]\nChecking uploaded documents.')
+    })
+  })
+
+  describe('5. Interactive Inline Status & Category Updates', () => {
+    it('emits "update-status" event when status dropdown is changed', async () => {
+      const { emitted } = render(TicketsTable, {
+        props: {
+          tickets: sampleTickets,
+          sorting: [],
+        },
+      })
+
+      const statusSelects = screen.getAllByLabelText('Change status')
+      expect(statusSelects.length).toBe(2)
+
+      await fireEvent.change(statusSelects[0], { target: { value: 'resolved' } })
+
+      expect(emitted()['update-status']).toBeTruthy()
+      expect(emitted()['update-status'].length).toBe(1)
+      const payload = emitted()['update-status'][0][0] as any
+      expect(payload.ticket.id).toBe('t-101')
+      expect(payload.status).toBe('resolved')
+    })
+
+    it('emits "update-category" event when category dropdown is changed', async () => {
+      const { emitted } = render(TicketsTable, {
+        props: {
+          tickets: sampleTickets,
+          sorting: [],
+        },
+      })
+
+      const categorySelects = screen.getAllByLabelText('Change category')
+      expect(categorySelects.length).toBe(2)
+
+      await fireEvent.change(categorySelects[1], { target: { value: 'technical' } })
+
+      expect(emitted()['update-category']).toBeTruthy()
+      expect(emitted()['update-category'].length).toBe(1)
+      const payload = emitted()['update-category'][0][0] as any
+      expect(payload.ticket.id).toBe('t-102')
+      expect(payload.category).toBe('technical')
+    })
+  })
+
+  describe('6. Column Visibility & Customization (Max 8 Columns Checkbox UX)', () => {
+    it('opens column customization popover when "Columns" button is clicked and displays visible count badge', async () => {
+      render(TicketsTable, {
+        props: {
+          tickets: sampleTickets,
+          sorting: [],
+        },
+      })
+
+      // Default visible count is 8/8 (Created At is hidden initially)
+      expect(screen.getByText('8/8')).toBeInTheDocument()
+
+      const columnsBtn = screen.getByTitle('Customize visible table columns')
+      expect(columnsBtn).toBeInTheDocument()
+
+      await fireEvent.click(columnsBtn)
+
+      // Popover should now be open
+      expect(screen.getByText('Customize Columns')).toBeInTheDocument()
+      expect(screen.getByText('Select up to 8 columns to show')).toBeInTheDocument()
+    })
+
+    it('toggles column visibility via checkbox and enforces max 8 columns behavior', async () => {
+      render(TicketsTable, {
+        props: {
+          tickets: sampleTickets,
+          sorting: [],
+        },
+      })
+
+      const columnsBtn = screen.getByTitle('Customize visible table columns')
+      await fireEvent.click(columnsBtn)
+
+      // Uncheck "Priority" column
+      const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+      const priorityCheckbox = checkboxes.find(cb => cb.nextElementSibling?.textContent?.includes('Priority'))
+      expect(priorityCheckbox).toBeDefined()
+      expect(priorityCheckbox?.checked).toBe(true)
+
+      await fireEvent.click(priorityCheckbox!)
+
+      // Now visible count should drop to 7/8, and Priority header should be hidden from table
+      expect(screen.getByText('7/8')).toBeInTheDocument()
+      expect(screen.queryByText('Priority', { selector: 'th span' })).not.toBeInTheDocument()
+
+      // Check "Created At" column to bring visible count back to 8/8
+      const createdAtCheckbox = checkboxes.find(cb => cb.nextElementSibling?.textContent?.includes('Created At'))
+      expect(createdAtCheckbox?.checked).toBe(false)
+      await fireEvent.click(createdAtCheckbox!)
+
+      expect(screen.getByText('8/8')).toBeInTheDocument()
+      expect(screen.getByText('Created At')).toBeInTheDocument()
     })
   })
 })
