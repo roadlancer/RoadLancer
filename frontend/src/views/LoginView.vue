@@ -79,6 +79,14 @@ async function handleSubmit() {
 
     const actualRole = user.value?.role
     const userStatus = (user.value as any)?.status
+
+    if (actualRole && actualRole !== form.role) {
+      submitError.value = 'Invalid email, password, or role selection.'
+      await authClient.signOut()
+      user.value = null
+      return
+    }
+
     if (userStatus === 'rejected') {
       submitError.value = 'Your account has been rejected. Please contact support.'
       await authClient.signOut()
