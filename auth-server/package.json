@@ -7,10 +7,10 @@
   "scripts": {
     "dev": "tsx watch server.ts",
     "start": "tsx server.ts",
-    "db:push": "npx prisma db push",
-    "db:migrate": "npx prisma migrate dev",
-    "db:seed": "tsx seed.ts",
-    "db:studio": "npx prisma studio"
+    "db:push": "bunx prisma db push",
+    "db:migrate": "bunx prisma migrate dev",
+    "db:seed": "bunx tsx seed.ts",
+    "db:studio": "bunx prisma studio"
   },
   "keywords": [],
   "author": "",

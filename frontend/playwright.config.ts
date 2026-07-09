@@ -55,7 +55,7 @@ export default defineConfig({
       timeout: 15000,
     },
     {
-      command: "npx vite --port 5173",
+      command: "bunx vite --port 5173",
       port: 5173,
       reuseExistingServer: !process.env.CI,
       timeout: 15000,

@@ -29,7 +29,7 @@ export default async function globalTeardown() {
   console.log("\n  ✓ Global teardown complete\n");
 }
 
-// Allow running directly: npx tsx tests/global-teardown.ts
+// Allow running directly: bunx tsx tests/global-teardown.ts
 if (process.argv[1] && process.argv[1].endsWith("global-teardown.ts")) {
   globalTeardown()
     .then(() => process.exit(0))

@@ -67,7 +67,8 @@ async function resetDatabase() {
 
 async function runAuthMigrations() {
   console.log("→ Applying auth-server migrations...");
-  execSync("npx prisma migrate deploy", {
+  const bunxBin = path.resolve(process.env.HOME || "/home/shivamsahani", ".bun/bin/bunx");
+  execSync(`${bunxBin} prisma migrate deploy`, {
     cwd: path.resolve(__dirname, "../../auth-server"),
     stdio: "pipe",
     env: { ...process.env, DATABASE_URL: TEST_DB_URL },
@@ -126,7 +127,7 @@ export default async function globalSetup() {
   console.log("\n  ✓ Global setup complete\n");
 }
 
-// Allow running directly: npx tsx tests/global-setup.ts
+// Allow running directly: bunx tsx tests/global-setup.ts
 if (process.argv[1] && process.argv[1].endsWith("global-setup.ts")) {
   globalSetup()
     .then(() => process.exit(0))

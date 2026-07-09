@@ -11,7 +11,7 @@
     "test:e2e": "DATABASE_URL=postgresql://postgres:postgres@localhost:5433/roadlancer_test playwright test",
     "test:e2e:ui": "DATABASE_URL=postgresql://postgres:postgres@localhost:5433/roadlancer_test playwright test --ui",
     "test:e2e:headed": "DATABASE_URL=postgresql://postgres:postgres@localhost:5433/roadlancer_test playwright test --headed",
-    "test:setup": "npx tsx tests/global-setup.ts"
+    "test:setup": "bunx tsx tests/global-setup.ts"
   },
   "dependencies": {
     "@lucide/vue": "^1.22.0",

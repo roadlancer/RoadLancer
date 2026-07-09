@@ -64,10 +64,10 @@ Playwright is set up with a **separate test database** (`roadlancer_test`) on th
 
 ```bash
 cd frontend
-npm run test:setup         # Reset test DB + seed users
-npm run test:e2e           # Run tests (headless)
-npm run test:e2e:headed    # Run with visible browser
-npm run test:e2e:ui        # Open Playwright UI
+bun run test:setup         # Reset test DB + seed users
+bun run test:e2e           # Run tests (headless)
+bun run test:e2e:headed    # Run with visible browser
+bun run test:e2e:ui        # Open Playwright UI
 ```
 
 ---
@@ -255,17 +255,17 @@ await page.fill('[name="title"]', "Test Shipment");
 
 ### headed mode
 ```bash
-npm run test:e2e:headed
+bun run test:e2e:headed
 ```
 
 ### Playwright UI mode
 ```bash
-npm run test:e2e:ui
+bun run test:e2e:ui
 ```
 
 ### Playwright Inspector
 ```bash
-PWDEBUG=1 npx playwright test
+PWDEBUG=1 bunx playwright test
 ```
 
 ### Screenshots on failure
@@ -310,7 +310,7 @@ BACKEND_URL=http://localhost:8000
 
 | Issue | Solution |
 |-------|----------|
-| Auth server not running | `webServer` starts it automatically; if standalone, run `npm run test:setup` first |
+| Auth server not running | `webServer` starts it automatically; if standalone, run `bun run test:setup` first |
 | Stale Vite cache | `rm -rf node_modules/.vite` then restart |
 | Tests flaky | Check `waitForURL` / `waitForLoadState` usage |
 | `user` table reserved word | PostgreSQL requires `"user"` with double quotes |

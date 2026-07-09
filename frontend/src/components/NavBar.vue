@@ -50,8 +50,9 @@ const supportModalOpen = ref(false)
         </template>
 
         <button
+          v-if="!loading && user"
           @click="supportModalOpen = true"
-          class="flex items-center gap-1.5 text-xs font-bold text-teal-700 hover:text-teal-900 transition bg-teal-50/80 hover:bg-teal-100 px-3 py-1.5 rounded-xl border border-teal-200/80 shadow-sm"
+          class="flex items-center gap-1.5 text-xs font-bold text-teal-700 hover:text-teal-900 transition bg-teal-50/80 hover:bg-teal-100 px-3 py-1.5 rounded-xl border border-teal-200/80 shadow-sm cursor-pointer"
         >
           <span>📧</span>
           <span class="hidden sm:inline">Help & Support</span>

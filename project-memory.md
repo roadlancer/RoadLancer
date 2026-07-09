@@ -39,9 +39,9 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **HTTP Client:** Axios (`@/lib/api.ts`) — centralized instance with Bearer token interceptor
 - **Data Fetching:** TanStack Query (`@tanstack/vue-query`) — automatic caching, refetching, mutations
 - **Router:** Vue Router with auth navigation guards
-- **Composables:** `useAuth()`, `useVerificationStatus()`, `useAdminUsers()`, `usePendingUsers()`, `useVerificationList()`
-- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup, UsersTable
-- **Layout:** Sticky NavBar (left-aligned brand & Dashboard links, uniform h-10 primary buttons), Footer, Admin Dashboard (compact stats cards, role filter & sort selects, extracted user table), centered login card with role selection
+- **Composables:** `useAuth()`, `useVerificationStatus()`, `useAdminUsers()`, `usePendingUsers()`, `useVerificationList()`, `useSupportTickets()`
+- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup, UsersTable, TicketsTable
+- **Layout:** Sticky NavBar (left-aligned brand & Dashboard links, uniform h-10 primary buttons, Help & Support trigger restricted strictly to authenticated users), Footer, Admin Dashboard & Support Desk (shared navigation banner, 7 Lucide KPI cards, search/filter headers, extracted table components), centered login card with role selection
 - **Port:** 5173
 
 ---
@@ -93,21 +93,23 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 5.3 | Driver Bidding Flow, Bid Review, Transit Status | ✅ Complete |
 | Phase 5.4 | Shipper Dashboard, Shipment Management | ✅ Complete |
 | Phase 5.5 | Forced Price Protection (Admin-only visibility) | ✅ Complete |
+| Phase 5.6 | Helpdesk & Support Desk UI Standardization, Ticket Sorting (`sort_by`), Auth-restricted triggers | ✅ Complete |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
-### Overall Completion: **~90%**
+### Overall Completion: **~92%**
 
 | Area | Completion | Notes |
 |------|------------|-------|
-| Auth System | 100% | Better Auth, login, sessions, role-based access |
-| Backend Routes | 95% | 25+ endpoints, missing OTP verification |
+| Auth System | 100% | Better Auth, login, sessions, role-based access, authenticated support trigger |
+| Backend Routes | 95% | 30+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email with sorting) |
 | AI Pricing Engine | 100% | Rule-based with all factors |
-| Database Schema | 100% | 8 models implemented |
-| Frontend Views | 95% | 12 views (all dashboards, login, register, home, shipment detail, verification) |
-| Frontend Composables | 100% | 12 composables |
-| Frontend Components | 100% | 8 components |
+| Database Schema | 100% | 9 models implemented |
+| Frontend Views | 95% | 13 views (all dashboards, login, register, home, shipment detail, verification, admin support desk) |
+| Frontend Composables | 100% | 13 composables |
+| Frontend Components | 100% | 10 components (`UsersTable`, `TicketsTable`, forms, nav, dialogs, etc.) |
 | Shipment Flow | 100% | Create → Price → Bidding → Transit |
-| Testing | 85% | 49 E2E + 28 unit tests |
+| Support & Email Webhook | 100% | Inbound email simulation, ticket sorting, standardized Admin Helpdesk UI |
+| Testing | 90% | Component tests (primary) + E2E tests (critical paths only) |
 
 ### What's Missing
 
@@ -120,22 +122,63 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | **Rejected Count Endpoint** | Documented but not implemented | 🟢 Nice to have |
 | **Sample Seed Data** | No sample shipments/bids for demo | 🟢 Nice to have |
 
-### E2E Test Status
-- **Total tests:** 49
-- **Passing:** 49
-- **Flaky:** 0
-- **Coverage:** Login flow, role validation, session management, admin dashboard, verification flow
+### Testing Strategy
 
-### Component/Unit Test Status
+> **Going forward:** Rely mostly on **component tests** (Vitest + Testing Library). Use **E2E tests** (Playwright) only when necessary.
+
+#### When to Use Component Tests (Preferred)
+- Testing individual Vue components in isolation
+- Verifying UI renders correctly with different props/state
+- Testing user interactions (clicks, form inputs, navigation)
+- Mocking composables, router, and external dependencies
+- Testing business logic in composables and utilities
+- Fast feedback loop (runs in seconds)
+
+#### When to Use E2E Tests (Only When Necessary)
+- Testing complete user flows across multiple pages (login → dashboard → create shipment)
+- Testing real API integration without mocks
+- Testing browser-specific behavior (cookies, localStorage, redirects)
+- Regression testing for critical paths (auth, shipment lifecycle)
+- Verifying actual database state changes
+
+#### Test Coverage Priorities
+1. **High priority (component tests):** Login, dashboards, shipment creation, bidding, verification forms
+2. **Medium priority (component tests):** Admin user management, support tickets, price estimation
+3. **Low priority (E2E only):** Full shipment lifecycle flow, multi-role interactions
+
+### E2E Test Status
+- **Total tests:** 52
+- **Passing:** 52
+- **Flaky:** 0
+- **Scope:** Critical user flows only (login, role validation, session management, admin dashboard, verification, support webhook)
+- **Usage:** Run before demos/presentations; not for every code change
+
+### Component Test Status
 - **Framework:** Vitest + @testing-library/vue + jsdom
 - **Test runner:** `vitest run` (single run) or `vitest` (watch mode)
 - **Location:** `frontend/src/views/__tests__/*.spec.ts` and `frontend/src/**/*.spec.ts`
 - **Current tests:** AdminDashboard (28 tests)
 - **Test setup:** `frontend/vitest.config.ts` (jsdom environment)
+- **Usage:** Run on every code change; fast feedback loop
 
 ---
 
 ## 🧪 12. Component/Unit Testing Guide
+
+> **Strategy:** Component tests are our primary testing tool. Use E2E tests only for critical user flows that span multiple pages.
+
+### Why Component Tests First?
+- **Fast:** Runs in seconds, not minutes
+- **Isolated:** Tests one component at a time
+- **Deterministic:** No flaky tests from network/browser issues
+- **Easy to debug:** Failures point to exact component
+- **Mock-friendly:** Control all external dependencies
+
+### When to Add E2E Tests
+- **Critical user flows:** Login → dashboard → create shipment → bid → accept
+- **Real integration:** Testing actual API calls without mocks
+- **Browser behavior:** Cookies, localStorage, redirects
+- **Regression prevention:** Ensuring critical paths don't break
 
 ### Tech Stack
 | Tool | Purpose |
@@ -150,8 +193,8 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 ### Running Tests
 ```bash
 # From frontend/ directory
-npm run test:unit          # Single run (CI mode)
-npm run test:unit:watch    # Watch mode (development)
+bun run test:unit          # Single run (CI mode)
+bun run test:unit:watch    # Watch mode (development)
 ```
 
 ### Test File Location
@@ -396,7 +439,8 @@ Better Auth Server (3000)
 Frontend receives response
   ↓ Stores token via authClient.getSession() (reads cookie)
   ↓ useAuth() composable holds user state globally
-  ↓ router.push('/') → NavBar shows role-based dashboard link
+  ↓ Redirects to correct dashboard based on actual user.role
+  ↓ (ignores selected radio — always routes /driver, /admin, or /shipper)
 ```
 
 ### Session Verification (FastAPI Backend)
@@ -447,7 +491,7 @@ assigned → cancelled (only by shipper)
   - `meta.requiresAuth` → redirects to `/login` if not authenticated
   - `meta.guest` → redirects to `/` if already authenticated
   - `meta.role` → redirects to `/` if user role doesn't match
-- **Login:** Role radio buttons → `signIn.email()` → `fetchSession()` → validates `user.role` against selected role → `router.push('/driver'|'/shipper')` → if mismatch: generic error + sign out
+- **Login:** Role radio buttons → `signIn.email()` → `fetchSession()` → redirects to `/driver`, `/admin`, or `/shipper` based on `user.role` (radio selection is ignored for routing)
 - **Sign out:** `useAuth().signOut()` → `api.post('/auth/sign-out')` → clears user → `window.location.href = '/login'`
 - **Verification check:** NavBar + dashboards use `useVerificationStatus()` composable — shows "Get Validated" button if not verified
 
@@ -787,9 +831,10 @@ export function useVerificationStatus() {
 - **Backend `pyproject.toml`:** Missing `[tool.setuptools.packages]` — `pip install -e .` broken; install deps individually
 - **Chrome autofill:** Use `autocomplete="new-password"` on inputs to prevent yellow background
 - **Auth server startup:** Must use `setsid` (not `< /dev/null`) to keep Hono alive — `process.stdin.resume()` fails when stdin is redirected
+- **Vite proxy order:** Specific routes (e.g., `/api/auth`) must come before catch-all routes. If using a single `/api` → backend catch-all, ensure auth routes are handled separately. The auth server (port 3000) and backend (port 8000) share the same `/api` prefix via Vite proxy.
 - **Vite cache:** Clear `node_modules/.vite` when changing imports (e.g., lucide-vue-next → @lucide/vue)
 - **TypeScript schema indexing:** Cast `schema.shape` to `Record<string, any>` when indexing with string
-- **Login role validation:** After `fetchSession()`, compare `user.role` with selected role — mismatch shows generic "Invalid credentials" error (never reveals actual role for security)
+- **Login role validation:** After `fetchSession()`, login redirects to the correct dashboard based on the user's actual role (`/driver`, `/admin`, or `/shipper`), regardless of which role radio button was selected. Previously showed "Invalid credentials" on role mismatch — now removed for better UX.
 - **Old admin user:** If old admin user exists with role `driver`, login succeeds with driver radio button — delete stale users from DB
 - **Seed users must have passwords:** Users created via Prisma directly have no password hash — always register via `/api/auth/sign-up/email` endpoint
 - **401 interceptor login page:** Must check `window.location.pathname !== '/login'` before redirecting — prevents redirect loop when role-mismatch sign-out triggers a 401 during verification query
@@ -806,11 +851,13 @@ export function useVerificationStatus() {
 - **Estimate Price Endpoint:** `POST /api/shipments/estimate-price` requires no authentication — called before shipment creation to show price range.
 - **TanStack Query / Vue Query Reactivity (`@tanstack/vue-query`):** When passing getter functions or reactive values to `useQuery` (e.g., `shipmentId`), always wrap `queryKey` and `enabled` in Vue `computed(() => ...)` properties. If passed as plain static arrays or booleans, they evaluate once on component creation and freeze forever (causing dialogs or child components mounted with initially null props to get permanently stuck with `enabled: false`).
 - **Prisma Python Relation Join Conflicts / Include Errors:** In `prisma-client-py`, querying models with `include={"relationName": True}` can fail with internal query errors if relation names conflict across models (e.g., `@relation("Driver")` on both `bids.driver` and `user.assignedShipments`). Since frontend serializers (`bid_to_dict`, `shipment_to_dict`) only require scalar foreign key IDs (`driver_id`, `shipment_id`), avoid unnecessary `include` arguments on `find_many` calls.
+- **Prisma Engine Warm-Up Required:** On first query after server start, Prisma's Rust engine binary can segfault. Add a warm-up query in the FastAPI lifespan that runs `await db.query_raw('SELECT 1')` with retry logic (3 attempts with exponential backoff) before the server marks itself as ready.
 - **Pending Login & Action Restriction Workflow:** Users with `pending` status are permitted to log in and access dashboards/verification pages without triggering 403 errors in `get_current_user`. Instead, functionality restriction is applied at the action layer: backend endpoints that modify state (`create_shipment`, `place_bid`, `accept_bid`, `update_shipment_status`) check `if user.get("status") != "approved"` and raise 403. In the UI, dashboards display an amber warning banner prompting verification submission and visually disable action buttons.
 - **Resolved SPA Navigation Freezes:** Vue Router would occasionally freeze during dev (HMR) or reactive state synchronization when navigating between dashboards and the verification forms. To ensure maximum reliability and bypass complex reactive route guards, navigation links across the NavBar, Dashboards, and Profiles have been converted to native HTML `<a>` tags, forcing a clean browser navigation.
 - **Admin Verification Data Parity:** The "Review Docs" modal in the Admin User Table originally showed empty credentials because it passed a stub object. It now fetches the full, authoritative data from `/api/verification/admin/list` before opening, ensuring it exactly matches the data model of the dedicated Verification Review page.
 - **Bid Upsert Logic:** The POST `/api/shipments/{id}/bids` endpoint intelligently acts as an upsert. If a driver has already placed a bid, it will update their existing bid rather than throwing a 400 error, allowing seamless quote revisions from the UI without complex POST/PUT conditionals.
 - **ShipperDashboard Shipments:** The frontend blindly trusts the backend's `list_shipments` endpoint to return ONLY the shipper's own shipments. Redundant frontend filtering by `shipper_id` has been removed to prevent hydration mismatches or typos (e.g. `shipperId` vs `shipper_id`) from hiding valid shipments.
+- **Seeded User Names:** Test users seeded via `auth-server/seed.ts` use "Driver User", "Shipper User", "Admin User" as display names (not "Test Driver" etc.). When writing Playwright tests, match exact names or use regex patterns scoped to `[role="dialog"]` to avoid strict mode violations from duplicate matches.
 - **`openBidReviewDialog` → `openBidReview` Function Name Mismatch:** In `ShipperDashboard.vue`, the template referenced `openBidReviewDialog` but the function was defined as `openBidReview` (line 259). Fixed by renaming the function definition to match the template reference.
 - **DriverDashboard Missing `verificationStatus` Destructuring:** In `useVerificationStatus()` call, `verificationStatus` was not included in the destructuring. Fixed by adding `status: verificationStatus` to the destructured variables.
 
@@ -831,7 +878,7 @@ export function useVerificationStatus() {
 | `backend/app/routes/admin.py` | Admin auth dependency (`get_admin_user`) |
 | `backend/app/routes/users.py` | User management endpoints — list, suspend, pending, approve, reject |
 | `backend/app/routes/verification.py` | Verification submit (driver/shipper), status, admin review |
-| `backend/app/routes/support.py` | Support ticket endpoints & inbound email webhook parser simulation |
+| `backend/app/routes/support.py` | Support ticket endpoints (with sort_by support for newest/oldest/priority/status) & inbound email webhook parser simulation |
 | `backend/app/routes/shipments.py` | Shipment CRUD, bids, status updates, AI pricing |
 | `backend/app/services/pricing.py` | AI-based pricing engine — rule-based with distance, weight, vehicle, goods, fuel, labour, seasonal factors |
 | `backend/prisma/schema.prisma` | Business schema — shipments, bids, user_verifications |
@@ -849,11 +896,12 @@ export function useVerificationStatus() {
 | `frontend/src/composables/useAcceptBid.ts` | TanStack Query composable — accept bid mutation |
 | `frontend/src/composables/useUpdateShipmentStatus.ts` | TanStack Query composable — status update mutation |
 | `frontend/src/composables/usePriceEstimate.ts` | TanStack Query composable — AI price estimation mutation |
-| `frontend/src/composables/useSupportTickets.ts` | TanStack Query composable — support tickets, inbound email simulation, and admin helpdesk |
+| `frontend/src/composables/useSupportTickets.ts` | TanStack Query composable — support tickets (sorted newest first by default), inbound email simulation, and admin helpdesk |
 | `frontend/src/lib/api.ts` | Axios instance with Bearer token interceptor and 401 redirect |
-| `frontend/src/components/NavBar.vue` | Sticky nav — RoadLancer brand only when logged out, Dashboard font size increased |
+| `frontend/src/components/NavBar.vue` | Sticky nav — RoadLancer brand only when logged out, Help & Support trigger restricted strictly to authenticated users |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
 | `frontend/src/components/UsersTable.vue` | Extracted admin user management table component with role/status badges and suspend actions |
+| `frontend/src/components/TicketsTable.vue` | Extracted support ticket & inbound email table component matching UsersTable design with status/priority badges and inspect/resolve actions |
 | `frontend/src/components/FileUpload.vue` | Reusable image upload component for Base64 document attachments with thumbnail preview & validation |
 | `frontend/src/components/CreateShipmentDialog.vue` | Shipment creation form with all fields (title, goods, weight, pickup/dropoff, vehicle) |
 | `frontend/src/components/PriceConfirmDialog.vue` | Price confirmation pop-up — AI suggested range, custom price input, forced price warning |
@@ -868,7 +916,7 @@ export function useVerificationStatus() {
 | `frontend/src/views/ShipperDashboard.vue` | Shipper dashboard — KPIs, shipment list, create/review buttons |
 | `frontend/src/views/ShipmentDetailView.vue` | Shipment detail — status timeline, bid management, transit actions, AI price estimate |
 | `frontend/src/views/AdminDashboard.vue` | Admin dashboard — compact stats cards, role filtering & sorting selects, user table, forced price badge |
-| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view for reviewing tickets and inbound email webhook conversions |
+| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view matching AdminDashboard UI (shared gradient header, 7 Lucide KPI cards, unified search/filter header, and TicketsTable) with ticket sorting and status management |
 | `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (28 tests) |
 | `frontend/src/views/__tests__/renderDashboard.ts` | Shared test helper — wraps render with common stubs |
 
@@ -885,33 +933,41 @@ export function useVerificationStatus() {
 
 ### Using playwright-e2e
 
-**When to use:**
-- Writing new E2E test files (`.spec.ts` in `frontend/tests/`)
-- Need login helpers, form testing patterns, or API interception examples
-- Debugging flaky tests or setting up test fixtures
+**When to use (limited scope):**
+- Writing E2E tests for critical user flows only
+- Testing complete login → dashboard → action flows
+- Verifying real API integration without mocks
+- Debugging flaky component tests that need real browser
+
+**When NOT to use:**
+- Testing individual components (use Vitest instead)
+- Testing business logic (use Vitest instead)
+- Testing UI rendering (use Vitest instead)
+- Quick feedback during development (use Vitest instead)
 
 **How to use:**
 1. Load the skill: `skill("playwright-e2e")`
 2. Ask to write a test for a specific feature (e.g., "write a login test for driver")
 3. The skill provides file templates, selector best practices, and common patterns
 4. Test files go in `frontend/tests/*.spec.ts`
-5. Run tests with `npm run test:e2e` from `frontend/`
+5. Run tests with `bun run test:e2e` from `frontend/`
 
 **Quick commands:**
 ```bash
-npm run test:setup         # Reset test DB + seed users
-npm run test:e2e           # Run all tests (headless)
-npm run test:e2e:headed    # Run with visible browser
-npm run test:e2e:ui        # Open Playwright UI
+bun run test:setup         # Reset test DB + seed users
+bun run test:e2e           # Run all tests (headless)
+bun run test:e2e:headed    # Run with visible browser
+bun run test:e2e:ui        # Open Playwright UI
 ```
 
-### Component/Unit Testing Patterns
+### Component/Unit Testing Patterns (Primary Approach)
 
-**When to use:**
+**When to use (preferred):**
 - Testing individual Vue components in isolation
 - Verifying UI renders correctly with different props/state
 - Testing user interactions (clicks, form inputs, navigation)
 - Mocking composables, router, and external dependencies
+- Fast feedback loop during development
 
 **Key patterns (see Section 12 for full guide):**
 - Mock composables with `vi.mock()` at module level — control state via exported `ref()` values
@@ -922,8 +978,8 @@ npm run test:e2e:ui        # Open Playwright UI
 
 **Quick commands:**
 ```bash
-npm run test:unit          # Single run
-npm run test:unit:watch    # Watch mode
+bun run test:unit          # Single run
+bun run test:unit:watch    # Watch mode
 ```
 
 **File location:** `frontend/src/views/__tests__/*.spec.ts`
@@ -942,13 +998,13 @@ npm run test:unit:watch    # Watch mode
 | Database Schema | ✅ | 9 models (users, sessions, shipments, bids, verifications, support_tickets, etc.) |
 | Frontend Views | ✅ | 13 views (all dashboards, login, register, home, shipment detail, verification, admin support desk) |
 | Frontend Composables | ✅ | 13 composables (all TanStack Query-based) |
-| Frontend Components | ✅ | 9 components (dialogs, tables, forms, nav, support email simulator) |
+| Frontend Components | ✅ | 10 components (dialogs, UsersTable, TicketsTable, forms, nav, support email simulator) |
 | Shipment Flow | ✅ | Create → AI pricing → Price confirm → Bidding → Accept → Transit |
-| Support & Email Webhook | ✅ | Inbound email simulation to support@roadlancer.com converted to tickets with user account linking |
+| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets sorted newest first with account linking, standardized Admin Helpdesk UI, and restricted NavBar trigger |
 | Forced Price Protection | ✅ | Shipper override with admin-only visibility |
 | Marketing Landing Page | ✅ | Public home page with features, how-it-works, stats |
 | User Registration | ✅ | Driver and Shipper registration with Zod validation & pending admin approval flow |
-| Testing | ✅ | 49 E2E tests + 28 unit tests passing |
+| Testing | ✅ | Component tests (primary) + E2E tests (critical paths only) |
 
 ### What's Pending (~10%)
 
@@ -986,3 +1042,10 @@ Phase 6 (Polish)          ⬜ 0%   (not started)
 1. Add sample seed data (1-2 hours) — makes demo more realistic
 2. Add OTP verification (4-6 hours) — completes the shipment lifecycle
 3. Add charts/analytics (3-4 hours) — improves dashboard visual appeal
+4. Add component tests for remaining views (2-3 hours) — ShipperDashboard, DriverDashboard, GetValidated
+
+**Testing strategy going forward:**
+- Write component tests first for new features
+- Add E2E tests only for critical user flows
+- Run `bun run test:unit` on every code change
+- Run `bun run test:e2e` only before demos/presentations
