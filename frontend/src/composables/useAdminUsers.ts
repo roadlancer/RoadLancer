@@ -17,10 +17,12 @@ export function useAdminUsers() {
   const queryClient = useQueryClient()
   const searchQuery = ref('')
   const activeTab = ref('all')
+  const sortField = ref<string | null>(null)
+  const sortOrder = ref<'asc' | 'desc'>('desc')
 
   const queryKey = computed(() => [
     'admin-users',
-    { search: searchQuery.value },
+    { search: searchQuery.value, sort_field: sortField.value, sort_order: sortOrder.value },
   ])
 
   const query = useQuery({
@@ -28,6 +30,10 @@ export function useAdminUsers() {
     queryFn: async () => {
       const params: Record<string, string> = {}
       if (searchQuery.value) params.search = searchQuery.value
+      if (sortField.value) {
+        params.sort_field = sortField.value
+        params.sort_order = sortOrder.value
+      }
       const { data } = await api.get('/admin/users', { params })
       return data as UserRecord[]
     },
@@ -78,6 +84,8 @@ export function useAdminUsers() {
     ...query,
     searchQuery,
     activeTab,
+    sortField,
+    sortOrder,
     pendingCount,
     rejectedCount,
     verifiedCount,

@@ -11,12 +11,12 @@ import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle, DialogTrigger,
+  DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import UsersTable from '@/components/UsersTable.vue'
-import { LoaderCircle, Users, UserCheck, UserX, Search, Filter, ArrowUpDown, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
+import type { SortingState } from '@tanstack/vue-table'
+import { LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()
@@ -27,12 +27,26 @@ const {
   error,
   searchQuery,
   activeTab,
+  sortField,
+  sortOrder,
   pendingCount,
   rejectedCount,
   verifiedCount,
   suspendMutation,
   refetchAll,
 } = useAdminUsers()
+
+const userSorting = ref<SortingState>([])
+
+watch(userSorting, (newSorting) => {
+  if (newSorting.length > 0) {
+    sortField.value = newSorting[0].id
+    sortOrder.value = newSorting[0].desc ? 'desc' : 'asc'
+  } else {
+    sortField.value = null
+    sortOrder.value = 'desc'
+  }
+}, { deep: true })
 
 const suspendDialogOpen = ref(false)
 const suspendTarget = ref<any>(null)
@@ -71,8 +85,6 @@ const suspendReasons = computed(() => {
   return []
 })
 
-const sortBy = ref('default')
-
 const filteredUsers = computed(() => {
   let result = [...(users.value ?? [])]
   if (activeTab.value !== 'all') {
@@ -93,13 +105,6 @@ const filteredUsers = computed(() => {
     result = result.filter((u: any) =>
       u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
     )
-  }
-  if (sortBy.value === 'name') {
-    result.sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''))
-  } else if (sortBy.value === 'role') {
-    result.sort((a: any, b: any) => (a.role || '').localeCompare(b.role || ''))
-  } else if (sortBy.value === 'status') {
-    result.sort((a: any, b: any) => Number(a.suspended || 0) - Number(b.suspended || 0))
   }
   return result
 })
@@ -169,7 +174,7 @@ watch([user, loading], ([u, l]) => {
 
 <template>
   <div class="flex-1 p-6 sm:p-8">
-    <div v-if="loading" class="max-w-5xl mx-auto">
+    <div v-if="loading" class="max-w-7xl mx-auto">
       <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 auto-rows-fr gap-2.5 mb-6">
         <Card v-for="i in 8" :key="i">
           <CardContent class="p-3">
@@ -203,7 +208,7 @@ watch([user, loading], ([u, l]) => {
       </Card>
     </div>
 
-    <div v-else-if="user && user.role === 'admin'" class="max-w-5xl mx-auto">
+    <div v-else-if="user && user.role === 'admin'" class="max-w-7xl mx-auto">
       <!-- Admin Portal Navigation Header -->
       <div class="mb-6 p-5 rounded-2xl bg-gradient-to-r from-gray-900 to-teal-950 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
         <div>
@@ -379,11 +384,11 @@ watch([user, loading], ([u, l]) => {
         <AlertDescription>{{ error.message }}</AlertDescription>
       </Alert>
 
-      <Card>
-        <CardHeader class="pb-4">
+      <Card class="border shadow-sm">
+        <CardHeader class="pb-4 border-b border-border bg-card/50">
           <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div class="flex flex-wrap items-center gap-3">
-              <CardTitle class="mr-1">Users</CardTitle>
+              <CardTitle class="mr-1 text-lg font-bold text-foreground">User Management</CardTitle>
               <Button size="sm" class="bg-primary hover:bg-primary/90 text-primary-foreground h-8 text-xs font-semibold shadow-2xs" @click="router.push('/admin/verifications')">
                 <ShieldCheck class="size-3.5 mr-1.5" /> Review Verification Docs
               </Button>
@@ -394,52 +399,23 @@ watch([user, loading], ([u, l]) => {
                 <Input
                   v-model="searchQuery"
                   placeholder="Search users..."
-                  class="pl-9 w-56 h-9 text-sm"
+                  class="pl-9 w-52 h-9 text-xs"
                 />
               </div>
 
-              <div class="relative">
-                <Filter class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                <select
-                  v-model="activeTab"
-                  class="flex h-9 w-40 appearance-none rounded-md border border-input bg-background pl-8 pr-7 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-                >
-                  <option value="all">Filter: All Users</option>
-                  <option value="driver">Filter: Drivers</option>
-                  <option value="shipper">Filter: Shippers</option>
-                  <option value="admin">Filter: Admins</option>
-                  <option value="verified">Filter: Verified</option>
-                  <option value="pending">Filter: Pending</option>
-                  <option value="rejected">Filter: Rejected</option>
-                  <option value="suspended">Filter: Suspended</option>
-                </select>
-              </div>
-
-              <div class="relative">
-                <ArrowUpDown class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                <select
-                  v-model="sortBy"
-                  class="flex h-9 w-36 appearance-none rounded-md border border-input bg-background pl-8 pr-7 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-                >
-                  <option value="default">Sort by: Default</option>
-                  <option value="name">Sort by: Name</option>
-                  <option value="role">Sort by: Role</option>
-                  <option value="status">Sort by: Status</option>
-                </select>
-              </div>
-
-              <Button variant="outline" size="sm" class="h-9" @click="refetchAll" :disabled="loadingUsers">
-                <LoaderCircle v-if="loadingUsers" class="size-4 animate-spin mr-1.5" />
+              <Button variant="outline" size="sm" class="h-9 text-xs font-semibold" @click="refetchAll" :disabled="loadingUsers">
+                <LoaderCircle v-if="loadingUsers" class="size-3.5 animate-spin mr-1.5" />
                 Refresh
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent class="p-4 sm:p-6">
           <UsersTable
             :users="filteredUsers"
             :loading="loadingUsers"
             :suspend-pending="suspendMutation.isPending.value"
+            v-model:sorting="userSorting"
             @suspend="openSuspendDialog"
             @unsuspend="unsuspendUser"
             @view-verification="openVerificationDetails"

@@ -4,8 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { LoaderCircle, AlertCircle, CheckCircle2, DollarSign, Info, AlertTriangle } from '@lucide/vue'
+import { LoaderCircle, CheckCircle2, DollarSign, AlertTriangle } from '@lucide/vue'
 
 interface PriceEstimate {
   floor_price: number

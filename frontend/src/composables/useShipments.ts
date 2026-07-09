@@ -17,6 +17,7 @@ export interface Shipment {
   shipper_budget?: number | null
   is_forced_price?: boolean
   status: string
+  price?: number | null
   assigned_driver_id?: string | null
   bidding_ends_at?: string | null
   created_at: string

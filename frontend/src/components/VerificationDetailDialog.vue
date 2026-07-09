@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  LoaderCircle, CheckCircle2, XCircle, Clock, Eye, User, CreditCard, Truck, MapPin,
+  CheckCircle2, XCircle, Clock, User, CreditCard, Truck, MapPin,
 } from '@lucide/vue'
 
 const props = defineProps<{

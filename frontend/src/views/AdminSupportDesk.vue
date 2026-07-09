@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useAdminTickets, type SupportTicket } from '@/composables/useSupportTickets'
+import { ref, watch } from 'vue'
+import { useAdminTickets } from '@/composables/useSupportTickets'
 import TicketsTable from '@/components/TicketsTable.vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,10 +16,8 @@ import {
   Mail,
   Globe,
   Search,
-  Filter,
-  ArrowUpDown,
   XCircle,
-  Phone,
+  Sparkles,
 } from '@lucide/vue'
 
 const {
@@ -30,35 +28,39 @@ const {
   searchQuery,
   statusFilter,
   sourceFilter,
-  sortBy,
+  sortField,
+  sortOrder,
   updateStatus,
   isUpdating,
+  seedTickets,
+  isSeeding,
 } = useAdminTickets()
 
-const sortedTickets = computed(() => {
-  const list = [...(tickets.value || [])]
-  const priorityMap: Record<string, number> = { urgent: 4, high: 3, normal: 2, low: 1 }
-  const statusMap: Record<string, number> = { open: 4, in_progress: 3, resolved: 2, closed: 1 }
+async function handleSeedTickets() {
+  if (!confirm('This will clean existing tickets and generate 100 diversified, real-life demo tickets. Continue?')) return
+  try {
+    await seedTickets()
+    await refetch()
+    alert('Successfully cleaned and generated 100 diversified support tickets!')
+  } catch (err: any) {
+    alert(err?.response?.data?.detail || 'Failed to seed tickets.')
+  }
+}
 
-  return list.sort((a, b) => {
-    const timeA = new Date(a.created_at).getTime() || 0
-    const timeB = new Date(b.created_at).getTime() || 0
+// TanStack Table sorting state — syncs to composable's sortField/sortOrder for server-side sorting
+const sorting = ref<SortingState>([])
 
-    if (sortBy.value === 'oldest') {
-      return timeA - timeB
-    }
-    if (sortBy.value === 'priority') {
-      const diff = (priorityMap[b.priority || 'normal'] || 0) - (priorityMap[a.priority || 'normal'] || 0)
-      return diff !== 0 ? diff : timeB - timeA
-    }
-    if (sortBy.value === 'status') {
-      const diff = (statusMap[b.status || 'open'] || 0) - (statusMap[a.status || 'open'] || 0)
-      return diff !== 0 ? diff : timeB - timeA
-    }
-    // Default: newest first
-    return timeB - timeA
-  })
-})
+watch(sorting, (newSorting) => {
+  if (newSorting.length > 0) {
+    sortField.value = newSorting[0].id
+    sortOrder.value = newSorting[0].desc ? 'desc' : 'asc'
+  } else {
+    sortField.value = null
+    sortOrder.value = 'desc'
+  }
+}, { deep: true })
+
+
 
 const selectedTicket = ref<SupportTicket | null>(null)
 const isInspectOpen = ref(false)
@@ -122,7 +124,7 @@ function getStatusBadgeClass(status: string) {
 
 <template>
   <div class="flex-1 p-6 sm:p-8">
-    <div class="max-w-6xl mx-auto">
+    <div class="max-w-7xl mx-auto">
       <!-- Admin Portal Navigation Header (Matching User Management) -->
       <div class="mb-6 p-5 rounded-2xl bg-gradient-to-r from-gray-900 to-teal-950 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
         <div>
@@ -301,47 +303,18 @@ function getStatusBadgeClass(status: string) {
                 />
               </div>
 
-              <!-- Status Filter -->
-              <div class="relative">
-                <Filter class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                <select
-                  v-model="statusFilter"
-                  class="flex h-9 w-36 appearance-none rounded-md border border-input bg-background pl-8 pr-7 py-1 text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="open">Open / Pending</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
-              </div>
-
-              <!-- Source Filter -->
-              <div class="relative">
-                <Filter class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                <select
-                  v-model="sourceFilter"
-                  class="flex h-9 w-36 appearance-none rounded-md border border-input bg-background pl-8 pr-7 py-1 text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-                >
-                  <option value="all">All Sources</option>
-                  <option value="email">📧 Inbound Email</option>
-                  <option value="web">🌐 Web Form</option>
-                </select>
-              </div>
-
-              <!-- Sort By -->
-              <div class="relative">
-                <ArrowUpDown class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-                <select
-                  v-model="sortBy"
-                  class="flex h-9 w-44 appearance-none rounded-md border border-input bg-background pl-8 pr-7 py-1 text-xs font-semibold text-primary shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-                >
-                  <option value="newest">Sort: Newest First</option>
-                  <option value="oldest">Sort: Oldest First</option>
-                  <option value="priority">Sort: Priority</option>
-                  <option value="status">Sort: Status</option>
-                </select>
-              </div>
+              <!-- Seed 100 Demo Tickets Button -->
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-9 text-xs font-semibold border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                @click="handleSeedTickets"
+                :disabled="isSeeding"
+              >
+                <Sparkles v-if="!isSeeding" class="size-3.5 mr-1.5 text-amber-500" />
+                <LoaderCircle v-else class="size-3.5 animate-spin mr-1.5" />
+                Seed 100 Tickets
+              </Button>
 
               <!-- Refresh Button -->
               <Button variant="outline" size="sm" class="h-9 text-xs font-semibold" @click="refetch()" :disabled="isLoading">
@@ -353,9 +326,9 @@ function getStatusBadgeClass(status: string) {
         </CardHeader>
         <CardContent class="p-4 sm:p-6">
           <TicketsTable
-            :tickets="sortedTickets"
+            :tickets="tickets ?? []"
             :loading="isLoading"
-            :sort-by="sortBy"
+            v-model:sorting="sorting"
             @inspect="openInspect"
             @resolve="handleQuickResolve"
           />

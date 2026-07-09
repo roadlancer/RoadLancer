@@ -40,11 +40,7 @@ const inTransitShipments = computed(() => {
   return myShipments.value.filter(s => ['in_transit', 'picked_up', 'assigned'].includes(s.status))
 })
 
-const totalSpent = computed(() => {
-  return myShipments.value
-    .filter(s => s.status === 'delivered' && s.price)
-    .reduce((acc, curr) => acc + (curr.price || 0), 0)
-})
+
 
 function openCreateDialog() {
   if (!isVerified.value) {
@@ -251,7 +247,7 @@ const statusColors: Record<string, string> = {
                 <div class="flex items-center justify-between text-xs text-muted-foreground pt-1">
                   <span class="flex items-center gap-1"><Truck class="size-3.5" /> {{ s.vehicle_type }}</span>
                   <span class="flex items-center gap-1"><Package class="size-3.5" /> {{ s.weight_kg }} kg</span>
-                  <span class="font-semibold text-foreground">Range: {{ formatCurrency(s.ai_estimated_min || s.ai_floor_price) }} — {{ formatCurrency(s.ai_estimated_max || s.shipper_budget) }}</span>
+                  <span class="font-semibold text-foreground">Range: {{ formatCurrency(s.ai_estimated_min ?? s.ai_floor_price ?? 0) }} — {{ formatCurrency(s.ai_estimated_max ?? s.shipper_budget ?? 0) }}</span>
                 </div>
 
                 <div class="pt-2 flex items-center gap-2">
