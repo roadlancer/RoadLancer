@@ -424,13 +424,3 @@ async def admin_update_ticket_status(
     user_map = {u.id: u for u in users}
     return ticket_to_dict(updated_ticket, user_map)
 
-
-@router.post("/admin/seed-tickets")
-async def admin_seed_tickets(admin: dict = Depends(get_admin_user)):
-    """
-    Admin endpoint to clean existing support tickets and generate 100 diversified, real-life demo tickets.
-    """
-    import seed_tickets
-    await seed_tickets.seed_100_tickets()
-    return {"success": True, "message": "Cleaned and generated 100 diversified support tickets."}
-
