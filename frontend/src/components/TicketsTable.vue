@@ -4,6 +4,7 @@ import {
   useVueTable,
   getCoreRowModel,
   getSortedRowModel,
+  getPaginationRowModel,
   type SortingState,
   type ColumnDef,
 } from '@tanstack/vue-table'
@@ -19,6 +20,10 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from '@lucide/vue'
 
 const props = defineProps<{
@@ -143,6 +148,12 @@ const table = useVueTable({
   },
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
+  getPaginationRowModel: getPaginationRowModel(),
+  initialState: {
+    pagination: {
+      pageSize: 10,
+    },
+  },
 })
 </script>
 
@@ -344,6 +355,80 @@ const table = useVueTable({
           </tr>
         </tbody>
       </table>
+
+      <!-- Pagination Controls -->
+      <div
+        v-if="table.getPageCount() > 1 || tickets.length > 10"
+        class="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-muted/20 border-t border-border text-xs"
+      >
+        <div class="flex items-center gap-2 text-muted-foreground font-medium">
+          <span>Rows per page:</span>
+          <select
+            :value="table.getState().pagination.pageSize"
+            @change="table.setPageSize(Number(($event.target as HTMLSelectElement).value))"
+            class="h-7 px-2 bg-background border border-input rounded text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option :value="10">10</option>
+            <option :value="15">15</option>
+            <option :value="25">25</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+          </select>
+          <span class="ml-2">
+            Showing {{ table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1 }} -
+            {{ Math.min((table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize, tickets.length) }}
+            of {{ tickets.length }}
+          </span>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-semibold text-foreground">
+            Page {{ table.getState().pagination.pageIndex + 1 }} of {{ table.getPageCount() }}
+          </span>
+          <div class="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 w-7 p-0"
+              :disabled="!table.getCanPreviousPage()"
+              @click="table.setPageIndex(0)"
+              title="First Page"
+            >
+              <ChevronsLeft class="size-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 w-7 p-0"
+              :disabled="!table.getCanPreviousPage()"
+              @click="table.previousPage()"
+              title="Previous Page"
+            >
+              <ChevronLeft class="size-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 w-7 p-0"
+              :disabled="!table.getCanNextPage()"
+              @click="table.nextPage()"
+              title="Next Page"
+            >
+              <ChevronRight class="size-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-7 w-7 p-0"
+              :disabled="!table.getCanNextPage()"
+              @click="table.setPageIndex(table.getPageCount() - 1)"
+              title="Last Page"
+            >
+              <ChevronsRight class="size-3.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
