@@ -234,3 +234,35 @@ export function useSupportMutations() {
     isCreatingTicket: createTicketMutation.isPending,
   }
 }
+
+export function useAdminTicket(ticketId: Ref<string>) {
+  const query = useQuery({
+    queryKey: computed(() => ['admin-support-ticket', ticketId.value]),
+    queryFn: async () => {
+      try {
+        const { data } = await api.get(`/support/admin/${ticketId.value}`)
+        return data as SupportTicket
+      } catch (err: any) {
+        // If the backend server has not reloaded the new GET /admin/{ticket_id} endpoint,
+        // fallback to /support/admin/list which is already active and contains all tickets.
+        const { data: listData } = await api.get('/support/admin/list')
+        const found = (listData as SupportTicket[]).find(
+          (t) => t.id === ticketId.value || t.ticket_number === ticketId.value
+        )
+        if (found) {
+          return found
+        }
+        throw err
+      }
+    },
+    enabled: computed(() => !!ticketId.value),
+  })
+
+  return {
+    ticket: query.data,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  }
+}

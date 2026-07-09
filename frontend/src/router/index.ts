@@ -11,6 +11,7 @@ import AdminVerificationReview from '@/views/AdminVerificationReview.vue'
 import ShipmentDetailView from '@/views/ShipmentDetailView.vue'
 import UserProfile from '@/views/UserProfile.vue'
 import AdminSupportDesk from '@/views/AdminSupportDesk.vue'
+import AdminTicketDetailView from '@/views/AdminTicketDetailView.vue'
 import { user, loading, fetchSession } from '@/composables/useAuth'
 
 const router = createRouter({
@@ -100,6 +101,12 @@ const router = createRouter({
       path: '/admin/support',
       name: 'admin-support',
       component: AdminSupportDesk,
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/support/:id',
+      name: 'admin-support-detail',
+      component: AdminTicketDetailView,
       meta: { requiresAuth: true, role: 'admin' },
     },
   ],
