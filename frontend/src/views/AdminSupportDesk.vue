@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useAdminTickets } from '@/composables/useSupportTickets'
+import { ref, computed, watch } from 'vue'
+import {
+  useAdminTickets,
+  type SupportTicket,
+  parseAssignedAgent,
+  formatAssignedAgentNotes,
+  useSupportAgents,
+} from '@/composables/useSupportTickets'
+import { useAdminUsers } from '@/composables/useAdminUsers'
 import TicketsTable from '@/components/TicketsTable.vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,17 +54,46 @@ watch(sorting, (newSorting) => {
   }
 }, { deep: true })
 
-
+const { data: adminUsers } = useAdminUsers()
+const supportAgents = useSupportAgents()
 
 const selectedTicket = ref<SupportTicket | null>(null)
 const isInspectOpen = ref(false)
 const replyNotes = ref('')
 const replyStatus = ref<'open' | 'in_progress' | 'resolved' | 'closed'>('open')
 const replyPriority = ref<'low' | 'normal' | 'high' | 'urgent'>('normal')
+const replyAgentId = ref<string>('')
+const replyAgentName = ref<string>('')
+const agentFilter = ref<string>('all')
+
+const filteredTickets = computed(() => {
+  const list = tickets.value || []
+  if (agentFilter.value === 'all') return list
+  if (agentFilter.value === 'unassigned') {
+    return list.filter((t) => !parseAssignedAgent(t.admin_notes).agentId)
+  }
+  return list.filter((t) => parseAssignedAgent(t.admin_notes).agentId === agentFilter.value)
+})
+
+function onAgentSelected(e: Event) {
+  const target = e.target as HTMLSelectElement
+  const selId = target.value
+  replyAgentId.value = selId
+  const found = supportAgents.value.find((a) => a.id === selId)
+  replyAgentName.value = found && selId ? found.name : ''
+}
+
+function assignToMeInDialog() {
+  replyAgentId.value = 'admin-lead'
+  replyAgentName.value = 'Sarah Jenkins (Support Lead)'
+}
 
 function openInspect(ticket: SupportTicket) {
   selectedTicket.value = ticket
-  replyNotes.value = ticket.admin_notes || ''
+  const parsed = parseAssignedAgent(ticket.admin_notes)
+  replyNotes.value = parsed.cleanNotes
+  replyAgentId.value = parsed.agentId || ''
+  replyAgentName.value = parsed.agentName || ''
   replyStatus.value = ticket.status
   replyPriority.value = ticket.priority
   isInspectOpen.value = true
@@ -66,10 +102,15 @@ function openInspect(ticket: SupportTicket) {
 async function handleSaveReply() {
   if (!selectedTicket.value) return
   try {
+    const formattedNotes = formatAssignedAgentNotes(
+      replyAgentId.value || null,
+      replyAgentName.value || null,
+      replyNotes.value
+    )
     const updated = await updateStatus({
       id: selectedTicket.value.id,
       status: replyStatus.value,
-      adminNotes: replyNotes.value || undefined,
+      adminNotes: formattedNotes,
       priority: replyPriority.value,
     })
     selectedTicket.value = updated
@@ -90,6 +131,33 @@ async function handleQuickResolve(ticket: SupportTicket) {
     alert(`Ticket #${ticket.ticket_number} marked as Resolved!`)
   } catch (err: any) {
     alert(err?.response?.data?.detail || 'Failed to resolve ticket.')
+  }
+}
+
+async function handleQuickAssign({
+  ticket,
+  agentId,
+  agentName,
+  newNotes,
+}: {
+  ticket: SupportTicket
+  agentId: string | null
+  agentName: string | null
+  newNotes: string
+}) {
+  try {
+    await updateStatus({
+      id: ticket.id,
+      status: ticket.status,
+      adminNotes: newNotes,
+      priority: ticket.priority,
+    })
+    const msg = agentName
+      ? `Assigned ticket #${ticket.ticket_number} to ${agentName.split(' (')[0]}`
+      : `Ticket #${ticket.ticket_number} is now Unassigned.`
+    alert(msg)
+  } catch (err: any) {
+    alert(err?.response?.data?.detail || 'Failed to assign agent.')
   }
 }
 
@@ -290,6 +358,19 @@ function getStatusBadgeClass(status: string) {
                 />
               </div>
 
+              <!-- Filter by Assigned Agent -->
+              <select
+                v-model="agentFilter"
+                class="h-9 px-3 bg-background border border-input rounded-md text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-2xs"
+                title="Filter tickets by assigned agent"
+              >
+                <option value="all">All Agents</option>
+                <option value="unassigned">Unassigned Only</option>
+                <option v-for="agent in supportAgents.filter(a => a.id !== '')" :key="agent.id" :value="agent.id">
+                  Assigned: {{ agent.name.split(' (')[0] }}
+                </option>
+              </select>
+
               <!-- Refresh Button -->
               <Button variant="outline" size="sm" class="h-9 text-xs font-semibold" @click="refetch()" :disabled="isLoading">
                 <LoaderCircle v-if="isLoading" class="size-3.5 animate-spin mr-1.5" />
@@ -300,11 +381,12 @@ function getStatusBadgeClass(status: string) {
         </CardHeader>
         <CardContent class="p-4 sm:p-6">
           <TicketsTable
-            :tickets="tickets ?? []"
+            :tickets="filteredTickets ?? []"
             :loading="isLoading"
             v-model:sorting="sorting"
             @inspect="openInspect"
             @resolve="handleQuickResolve"
+            @assign="handleQuickAssign"
           />
         </CardContent>
       </Card>
@@ -368,6 +450,37 @@ function getStatusBadgeClass(status: string) {
             <div class="p-4 rounded-xl bg-muted/60 border border-border space-y-4">
               <div class="font-semibold text-xs text-foreground flex items-center gap-1.5">
                 <span>🛡️</span> Admin Status & Reply Management
+              </div>
+
+              <!-- Assigned Agent -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                  <Label class="text-xs font-semibold text-foreground">Assigned Support Agent</Label>
+                  <span v-if="replyAgentName" class="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold truncate max-w-[140px]">
+                    ✓ Assigned to {{ replyAgentName.split(' (')[0] }}
+                  </span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <select
+                    :value="replyAgentId"
+                    @change="onAgentSelected"
+                    class="w-full h-9 px-3 bg-background border border-input rounded-lg text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option v-for="agent in supportAgents" :key="agent.id" :value="agent.id">
+                      {{ agent.name }}
+                    </option>
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="h-9 px-3 text-xs font-semibold shrink-0 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shadow-2xs"
+                    @click="assignToMeInDialog"
+                    title="Quick assign to current logged in admin"
+                  >
+                    Assign to Me
+                  </Button>
+                </div>
               </div>
 
               <div class="grid grid-cols-2 gap-3">

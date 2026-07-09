@@ -1,7 +1,15 @@
 <script lang="ts" setup>
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAdminTicket, useAdminTickets, type SupportTicket } from '@/composables/useSupportTickets'
+import {
+  useAdminTicket,
+  useAdminTickets,
+  type SupportTicket,
+  parseAssignedAgent,
+  formatAssignedAgentNotes,
+  useSupportAgents,
+} from '@/composables/useSupportTickets'
+import { useAdminUsers } from '@/composables/useAdminUsers'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,6 +27,7 @@ import {
   Save,
   MessageSquare,
   ExternalLink,
+  UserCheck,
 } from '@lucide/vue'
 
 const route = useRoute()
@@ -27,19 +36,42 @@ const router = useRouter()
 const ticketId = computed(() => route.params.id as string)
 const { ticket, isLoading, isError, error, refetch } = useAdminTicket(ticketId)
 const { updateStatus } = useAdminTickets()
+const { data: adminUsers } = useAdminUsers()
 
 const replyNotes = ref('')
 const replyStatus = ref<'open' | 'in_progress' | 'resolved' | 'closed'>('open')
 const replyPriority = ref<'low' | 'normal' | 'high' | 'urgent'>('normal')
+const replyAgentId = ref<string>('')
+const replyAgentName = ref<string>('')
 const isSaving = ref(false)
+
+const supportAgents = useSupportAgents()
+
+function assignToMeInDetail() {
+  replyAgentId.value = 'admin-lead'
+  replyAgentName.value = 'Sarah Jenkins (Support Lead)'
+}
+
+const assignedInfo = computed(() => parseAssignedAgent(ticket.value?.admin_notes))
 
 watch(ticket, (t) => {
   if (t) {
-    replyNotes.value = t.admin_notes || ''
+    const parsed = parseAssignedAgent(t.admin_notes)
+    replyNotes.value = parsed.cleanNotes
+    replyAgentId.value = parsed.agentId || ''
+    replyAgentName.value = parsed.agentName || ''
     replyStatus.value = t.status
     replyPriority.value = t.priority
   }
 }, { immediate: true })
+
+function onAgentSelected(e: Event) {
+  const target = e.target as HTMLSelectElement
+  const selId = target.value
+  replyAgentId.value = selId
+  const found = supportAgents.value.find((a) => a.id === selId)
+  replyAgentName.value = found && selId ? found.name : ''
+}
 
 function getPriorityBadgeClass(priority: string) {
   switch (priority) {
@@ -73,10 +105,15 @@ async function handleSave() {
   if (!ticket.value) return
   isSaving.value = true
   try {
+    const formattedNotes = formatAssignedAgentNotes(
+      replyAgentId.value || null,
+      replyAgentName.value || null,
+      replyNotes.value
+    )
     const updated = await updateStatus({
       id: ticket.value.id,
       status: replyStatus.value,
-      adminNotes: replyNotes.value || undefined,
+      adminNotes: formattedNotes,
       priority: replyPriority.value,
     })
     ticket.value = updated
@@ -120,6 +157,9 @@ async function quickResolve() {
           </Badge>
           <Badge :class="['text-xs uppercase px-2.5 py-0.5 border font-bold', getStatusBadgeClass(ticket.status)]">
             {{ ticket.status.replace('_', ' ') }}
+          </Badge>
+          <Badge v-if="assignedInfo.agentName" variant="outline" class="bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 text-xs px-2.5 py-0.5 font-bold flex items-center gap-1.5">
+            <UserCheck class="size-3 text-indigo-600 dark:text-indigo-400" /> Assigned: {{ assignedInfo.agentName }}
           </Badge>
         </div>
       </div>
@@ -268,6 +308,39 @@ async function quickResolve() {
           </CardHeader>
 
           <CardContent class="p-5 space-y-5">
+            <!-- Assigned Agent Select -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-bold text-foreground uppercase tracking-wider block">
+                  Assigned Support Agent
+                </label>
+                <span v-if="replyAgentName" class="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 font-bold truncate max-w-[140px]">
+                  ✓ Assigned to {{ replyAgentName.split(' (')[0] }}
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <select
+                  :value="replyAgentId"
+                  @change="onAgentSelected"
+                  class="w-full h-10 px-3 bg-background border border-input rounded-xl text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
+                >
+                  <option v-for="agent in supportAgents" :key="agent.id" :value="agent.id">
+                    {{ agent.name }}
+                  </option>
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-10 px-3.5 text-xs font-semibold shrink-0 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shadow-2xs"
+                  @click="assignToMeInDetail"
+                  title="Quick assign to current logged in admin"
+                >
+                  Assign to Me
+                </Button>
+              </div>
+            </div>
+
             <!-- Status Select -->
             <div class="space-y-2">
               <label class="text-xs font-bold text-foreground uppercase tracking-wider block">

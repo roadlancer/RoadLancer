@@ -2,6 +2,7 @@ import { ref, computed } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import api from '@/lib/api'
 import { useAuth } from './useAuth'
+import { useAdminUsers } from './useAdminUsers'
 
 export interface SupportTicket {
   id: string
@@ -24,6 +25,61 @@ export interface SupportTicket {
   admin_notes: string | null
   created_at: string
   updated_at: string
+}
+
+export interface AssignedAgentInfo {
+  agentId: string | null
+  agentName: string | null
+  cleanNotes: string
+}
+
+export interface SupportAgent {
+  id: string
+  name: string
+}
+
+export function parseAssignedAgent(notes: string | null | undefined): AssignedAgentInfo {
+  if (!notes) {
+    return { agentId: null, agentName: null, cleanNotes: '' }
+  }
+  const match = notes.match(/^\[ASSIGNED_TO:(.*?)\|(.*?)\]\r?\n?\s*(.*)$/s)
+  if (match) {
+    return {
+      agentId: match[1] || null,
+      agentName: match[2] || null,
+      cleanNotes: (match[3] || '').trim(),
+    }
+  }
+  return { agentId: null, agentName: null, cleanNotes: notes.trim() }
+}
+
+export function formatAssignedAgentNotes(agentId: string | null, agentName: string | null, cleanNotes: string): string | undefined {
+  const trimmed = cleanNotes.trim()
+  if (!agentId || !agentName) {
+    return trimmed || undefined
+  }
+  return trimmed ? `[ASSIGNED_TO:${agentId}|${agentName}]\n${trimmed}` : `[ASSIGNED_TO:${agentId}|${agentName}]`
+}
+
+export function useSupportAgents() {
+  const { data: adminUsers } = useAdminUsers()
+  return computed<SupportAgent[]>(() => {
+    const base: SupportAgent[] = [
+      { id: '', name: 'Unassigned (No Agent)' },
+      { id: 'admin-lead', name: 'Sarah Jenkins (Support Lead)' },
+      { id: 'admin-dispatch', name: 'Rahul Sharma (Dispatch Specialist)' },
+      { id: 'admin-kyc', name: 'Pooja Nair (KYC Verification Team)' },
+      { id: 'admin-billing', name: 'Vikram Mehta (Billing & Accounts)' },
+      { id: 'admin-current', name: 'Admin User (System Administrator)' },
+    ]
+    if (adminUsers.value) {
+      const dbAdmins = adminUsers.value
+        .filter((u) => u.role === 'admin' && !base.some((b) => b.id === u.id))
+        .map((u) => ({ id: u.id, name: `${u.name} (${u.email})` }))
+      return [...base, ...dbAdmins]
+    }
+    return base
+  })
 }
 
 export function useMyTickets() {
