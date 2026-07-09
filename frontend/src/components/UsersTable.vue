@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import {
   useVueTable,
   getCoreRowModel,
+  getSortedRowModel,
   type SortingState,
   type ColumnDef,
 } from '@tanstack/vue-table'
@@ -74,7 +75,6 @@ const table = useVueTable({
       return props.sorting ?? []
     },
   },
-  manualSorting: true,
   onSortingChange: (updaterOrValue) => {
     const nextSorting =
       typeof updaterOrValue === 'function'
@@ -83,6 +83,7 @@ const table = useVueTable({
     emit('update:sorting', nextSorting)
   },
   getCoreRowModel: getCoreRowModel(),
+  getSortedRowModel: getSortedRowModel(),
 })
 </script>
 

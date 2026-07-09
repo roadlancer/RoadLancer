@@ -160,18 +160,6 @@ export function useAdminTickets() {
     },
   })
 
-  const seedTicketsMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post('/support/admin/seed-tickets')
-      return data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] })
-      queryClient.invalidateQueries({ queryKey: ['admin-support-counts'] })
-      queryClient.invalidateQueries({ queryKey: ['my-support-tickets'] })
-    },
-  })
-
   return {
     tickets: query.data,
     isLoading: query.isLoading,
@@ -186,8 +174,6 @@ export function useAdminTickets() {
     sortOrder,
     updateStatus: updateStatusMutation.mutateAsync,
     isUpdating: updateStatusMutation.isPending,
-    seedTickets: seedTicketsMutation.mutateAsync,
-    isSeeding: seedTicketsMutation.isPending,
   }
 }
 

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import {
   useVueTable,
   getCoreRowModel,
+  getSortedRowModel,
   type SortingState,
   type ColumnDef,
 } from '@tanstack/vue-table'
@@ -60,6 +61,9 @@ function getPriorityBadgeClass(priority: string) {
   }
 }
 
+const priorityOrder: Record<string, number> = { urgent: 4, high: 3, normal: 2, low: 1 }
+const statusOrder: Record<string, number> = { open: 4, in_progress: 3, resolved: 2, closed: 1 }
+
 const columns = computed<ColumnDef<SupportTicket, any>[]>(() => [
   {
     accessorKey: 'ticket_number',
@@ -85,16 +89,31 @@ const columns = computed<ColumnDef<SupportTicket, any>[]>(() => [
     accessorKey: 'priority',
     header: 'Priority',
     enableSorting: true,
+    sortingFn: (rowA, rowB, columnId) => {
+      const pA = priorityOrder[(rowA.getValue(columnId) as string) || 'normal'] ?? 0
+      const pB = priorityOrder[(rowB.getValue(columnId) as string) || 'normal'] ?? 0
+      return pA - pB
+    },
   },
   {
     accessorKey: 'status',
     header: 'Status',
     enableSorting: true,
+    sortingFn: (rowA, rowB, columnId) => {
+      const sA = statusOrder[(rowA.getValue(columnId) as string) || 'open'] ?? 0
+      const sB = statusOrder[(rowB.getValue(columnId) as string) || 'open'] ?? 0
+      return sA - sB
+    },
   },
   {
     accessorKey: 'created_at',
     header: 'Created At',
     enableSorting: true,
+    sortingFn: (rowA, rowB, columnId) => {
+      const dateA = new Date((rowA.getValue(columnId) as string) || 0).getTime()
+      const dateB = new Date((rowB.getValue(columnId) as string) || 0).getTime()
+      return dateA - dateB
+    },
   },
   {
     id: 'actions',
@@ -123,7 +142,7 @@ const table = useVueTable({
     emit('update:sorting', newSorting)
   },
   getCoreRowModel: getCoreRowModel(),
-  manualSorting: true,
+  getSortedRowModel: getSortedRowModel(),
 })
 </script>
 

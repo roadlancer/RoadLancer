@@ -17,7 +17,7 @@ import {
   Globe,
   Search,
   XCircle,
-  Sparkles,
+  Activity,
 } from '@lucide/vue'
 
 const {
@@ -32,20 +32,7 @@ const {
   sortOrder,
   updateStatus,
   isUpdating,
-  seedTickets,
-  isSeeding,
 } = useAdminTickets()
-
-async function handleSeedTickets() {
-  if (!confirm('This will clean existing tickets and generate 100 diversified, real-life demo tickets. Continue?')) return
-  try {
-    await seedTickets()
-    await refetch()
-    alert('Successfully cleaned and generated 100 diversified support tickets!')
-  } catch (err: any) {
-    alert(err?.response?.data?.detail || 'Failed to seed tickets.')
-  }
-}
 
 // TanStack Table sorting state — syncs to composable's sortField/sortOrder for server-side sorting
 const sorting = ref<SortingState>([])
@@ -198,7 +185,7 @@ function getStatusBadgeClass(status: string) {
           <CardContent class="p-3">
             <div class="flex items-center gap-2.5">
               <div class="w-8 h-8 bg-blue-500/10 rounded-md flex items-center justify-center shrink-0">
-                <LoaderCircle class="size-4 text-blue-600 animate-spin" />
+                <Activity class="size-4 text-blue-600" />
               </div>
               <div class="min-w-0">
                 <p class="text-lg font-bold leading-none mb-1">{{ counts?.in_progress || 0 }}</p>
@@ -302,19 +289,6 @@ function getStatusBadgeClass(status: string) {
                   class="pl-9 w-52 h-9 text-xs"
                 />
               </div>
-
-              <!-- Seed 100 Demo Tickets Button -->
-              <Button
-                variant="outline"
-                size="sm"
-                class="h-9 text-xs font-semibold border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
-                @click="handleSeedTickets"
-                :disabled="isSeeding"
-              >
-                <Sparkles v-if="!isSeeding" class="size-3.5 mr-1.5 text-amber-500" />
-                <LoaderCircle v-else class="size-3.5 animate-spin mr-1.5" />
-                Seed 100 Tickets
-              </Button>
 
               <!-- Refresh Button -->
               <Button variant="outline" size="sm" class="h-9 text-xs font-semibold" @click="refetch()" :disabled="isLoading">
