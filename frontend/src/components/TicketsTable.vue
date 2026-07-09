@@ -12,12 +12,17 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { SupportTicket } from '@/composables/useSupportTickets'
+import {
+  type SupportTicket,
+  parseAssignedAgent,
+  formatAssignedAgentNotes,
+  useSupportAgents,
+  type SupportAgent,
+} from '@/composables/useSupportTickets'
 import {
   MessageSquare,
   Mail,
   Globe,
-  Phone,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
@@ -25,6 +30,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  UserCheck,
 } from '@lucide/vue'
 
 const props = defineProps<{
@@ -34,12 +40,24 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
+const agents = useSupportAgents()
 
 const emit = defineEmits<{
   (e: 'inspect', ticket: SupportTicket): void
   (e: 'resolve', ticket: SupportTicket): void
   (e: 'update:sorting', sorting: SortingState): void
+  (e: 'assign', payload: { ticket: SupportTicket; agentId: string | null; agentName: string | null; newNotes: string }): void
 }>()
+
+function handleRowAssign(ticket: SupportTicket, event: Event) {
+  const select = event.target as HTMLSelectElement
+  const agentId = select.value
+  const foundAgent = agents.value.find((a) => a.id === agentId)
+  const agentName = foundAgent && agentId ? foundAgent.name : null
+  const parsed = parseAssignedAgent(ticket.admin_notes)
+  const newNotes = formatAssignedAgentNotes(agentId || null, agentName, parsed.cleanNotes) || ''
+  emit('assign', { ticket, agentId: agentId || null, agentName, newNotes })
+}
 
 function getStatusBadgeClass(status: string) {
   switch (status) {
@@ -79,11 +97,6 @@ const columns = computed<ColumnDef<SupportTicket, any>[]>(() => [
     enableSorting: true,
   },
   {
-    accessorKey: 'sender_email',
-    header: 'Sender & Account',
-    enableSorting: true,
-  },
-  {
     accessorKey: 'subject',
     header: 'Subject',
     enableSorting: true,
@@ -112,6 +125,11 @@ const columns = computed<ColumnDef<SupportTicket, any>[]>(() => [
       const sB = statusOrder[(rowB.getValue(columnId) as string) || 'open'] ?? 0
       return sA - sB
     },
+  },
+  {
+    id: 'assigned_to',
+    header: 'Assigned Agent',
+    enableSorting: false,
   },
   {
     accessorKey: 'created_at',
@@ -253,38 +271,9 @@ const table = useVueTable({
             <td class="py-3.5 px-2.5 sm:px-3 font-mono font-bold text-foreground whitespace-nowrap">
               {{ row.original.ticket_number }}
             </td>
-            <!-- Sender & Account -->
-            <td class="py-3.5 px-2.5 sm:px-3 max-w-[200px]">
-              <div>
-                <p class="font-bold text-foreground text-sm leading-tight group-hover:text-primary transition-colors truncate">
-                  {{ row.original.sender_name || row.original.sender_email }}
-                </p>
-                <p class="text-xs font-mono text-muted-foreground mt-0.5 truncate">
-                  {{ row.original.sender_email }}
-                </p>
-                <div
-                  v-if="row.original.user"
-                  class="mt-1.5 flex items-center gap-1.5 flex-wrap"
-                >
-                  <Badge
-                    variant="secondary"
-                    class="text-[10px] px-1.5 py-0 uppercase font-semibold"
-                  >
-                    {{ row.original.user.role }}
-                  </Badge>
-                  <span
-                    v-if="row.original.user.phone"
-                    class="text-[11px] text-muted-foreground font-mono flex items-center gap-1 truncate"
-                  >
-                    <Phone class="size-3 text-muted-foreground shrink-0" />
-                    {{ row.original.user.phone }}
-                  </span>
-                </div>
-              </div>
-            </td>
             <!-- Subject -->
             <td
-              class="py-3.5 px-2.5 sm:px-3 font-bold text-foreground max-w-[180px] sm:max-w-[220px] truncate hover:text-primary cursor-pointer transition-colors"
+              class="py-3.5 px-2.5 sm:px-3 font-bold text-foreground max-w-[220px] sm:max-w-[320px] truncate hover:text-primary cursor-pointer transition-colors"
               @click="router.push(`/admin/support/${row.original.id}`)"
               title="Click to view ticket details in separate page"
             >
@@ -328,6 +317,27 @@ const table = useVueTable({
               >
                 {{ row.original.status.replace('_', ' ') }}
               </Badge>
+            </td>
+            <!-- Assigned Agent (Interactive Inline Assignment) -->
+            <td class="py-2.5 px-2.5 sm:px-3 whitespace-nowrap" @click.stop>
+              <div class="relative flex items-center">
+                <UserCheck
+                  v-if="parseAssignedAgent(row.original.admin_notes).agentName"
+                  class="absolute left-2.5 size-3.5 text-indigo-600 dark:text-indigo-400 pointer-events-none z-10"
+                />
+                <select
+                  :value="parseAssignedAgent(row.original.admin_notes).agentId || ''"
+                  @change="handleRowAssign(row.original, $event)"
+                  class="h-8 pr-6 rounded-lg text-xs font-semibold border shadow-2xs focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors cursor-pointer max-w-[185px] truncate"
+                  :class="parseAssignedAgent(row.original.admin_notes).agentName ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 pl-7 hover:bg-indigo-500/25' : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted pl-2.5'"
+                  title="Change assigned agent right from the table"
+                >
+                  <option value="">+ Assign Agent (Unassigned)</option>
+                  <option v-for="agent in agents.filter(a => a.id !== '')" :key="agent.id" :value="agent.id">
+                    {{ agent.name.split(' (')[0] }}
+                  </option>
+                </select>
+              </div>
             </td>
             <!-- Created At -->
             <td

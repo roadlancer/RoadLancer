@@ -40,8 +40,8 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Data Fetching:** TanStack Query (`@tanstack/vue-query`) — automatic caching, refetching, mutations
 - **Router:** Vue Router with auth navigation guards
 - **Composables:** `useAuth()`, `useVerificationStatus()`, `useAdminUsers()`, `usePendingUsers()`, `useVerificationList()`, `useSupportTickets()`
-- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup, UsersTable, TicketsTable
-- **Layout:** Sticky NavBar (left-aligned brand & Dashboard links, uniform h-10 primary buttons, Help & Support trigger restricted strictly to authenticated users), Footer, Admin Dashboard & Support Desk (shared navigation banner, 7 Lucide KPI cards, search/filter headers, extracted table components), centered login card with role selection
+- **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup, UsersTable, TicketsTable (`@tanstack/vue-table` sorting & pagination)
+- **Layout:** Sticky NavBar (left-aligned brand & Dashboard links, uniform h-10 primary buttons, Help & Support trigger restricted strictly to authenticated users), Footer, Admin Dashboard & Support Desk (shared navigation banner, 7 Lucide KPI cards, search/filter headers, extracted table components, dedicated ticket resolution desk at `/admin/support/:id`), centered login card with role selection
 - **Port:** 5173
 
 ---
@@ -94,21 +94,22 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 5.4 | Shipper Dashboard, Shipment Management | ✅ Complete |
 | Phase 5.5 | Forced Price Protection (Admin-only visibility) | ✅ Complete |
 | Phase 5.6 | Helpdesk & Support Desk UI Standardization, Ticket Sorting (`sort_by`), Auth-restricted triggers | ✅ Complete |
+| Phase 5.7 | Support Desk Enhancements: TanStack Table Sorting & Pagination, Interactive Inline Agent Assignment (`[ASSIGNED_TO]`), Agent Filtering, & Dedicated Ticket Detail Page (`/admin/support/:id`) | ✅ Complete |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
-### Overall Completion: **~92%**
+### Overall Completion: **~94%**
 
 | Area | Completion | Notes |
 |------|------------|-------|
 | Auth System | 100% | Better Auth, login, sessions, role-based access, authenticated support trigger |
-| Backend Routes | 95% | 30+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email with sorting) |
+| Backend Routes | 95% | 35+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET) |
 | AI Pricing Engine | 100% | Rule-based with all factors |
 | Database Schema | 100% | 9 models implemented |
-| Frontend Views | 95% | 13 views (all dashboards, login, register, home, shipment detail, verification, admin support desk) |
-| Frontend Composables | 100% | 13 composables |
-| Frontend Components | 100% | 10 components (`UsersTable`, `TicketsTable`, forms, nav, dialogs, etc.) |
+| Frontend Views | 95% | 14 views (all dashboards, login, register, home, shipment detail, verification, admin support desk with agent filtering, admin ticket detail view with assign-to-me) |
+| Frontend Composables | 100% | 13 composables including `useSupportAgents()` for unified agent management |
+| Frontend Components | 100% | 10 components (`UsersTable`, `TicketsTable` with `@tanstack/vue-table` sorting, pagination, and direct inline agent assignment dropdowns) |
 | Shipment Flow | 100% | Create → Price → Bidding → Transit |
-| Support & Email Webhook | 100% | Inbound email simulation, ticket sorting, standardized Admin Helpdesk UI |
+| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI & dedicated resolution page |
 | Testing | 90% | Component tests (primary) + E2E tests (critical paths only) |
 
 ### What's Missing
@@ -559,6 +560,14 @@ assigned → cancelled (only by shipper)
   - `GET /api/shipments/{id}/bids/count` — count bids on a shipment
   - `POST /api/shipments/{id}/bids/{bid_id}/accept` — accept a bid (shipper only)
   - `POST /api/shipments/estimate-price` — AI price estimation (no auth required)
+- **`/api/support/*`** — Support tickets & inbound email webhook (sorted newest first by default, with `sort_field` and `sort_order` support for TanStack Table)
+  - `POST /api/support/inbound-email` — inbound email webhook simulation (auto-creates tickets, links to sender account if matched)
+  - `POST /api/support/tickets` — create web support ticket (`user: dict = Depends(get_current_user)`)
+  - `GET /api/support/tickets/my` — get current user's tickets (supports status/source filters + search + column sorting via `sort_field`/`sort_order`)
+  - `GET /api/support/admin/list` — list all support tickets (admin only, supports filters + search + column sorting via `sort_field`/`sort_order`)
+  - `GET /api/support/admin/count` — get KPI counts (`total`, `open`, `in_progress`, `resolved`, `closed`, `inbound_email`, `web`)
+  - `GET /api/support/admin/{ticket_id}` — get single support ticket by ID or `ticketNumber` (admin only)
+  - `PUT /api/support/admin/{ticket_id}/status` — update ticket workflow status, priority ranking, and internal resolution notes (`adminNotes`) including assigned agent metadata (admin only)
 
 ### AI Pricing Engine
 
@@ -769,6 +778,8 @@ export function useVerificationStatus() {
 | `/admin/profile` | AdminProfile | Admin only |
 | `/admin/pending` | PendingUsers | Admin only |
 | `/admin/verifications` | AdminVerificationReview | Admin only |
+| `/admin/support` | AdminSupportDesk | Admin only |
+| `/admin/support/:id` | AdminTicketDetailView | Admin only |
 
 ---
 
@@ -860,6 +871,9 @@ export function useVerificationStatus() {
 - **Seeded User Names:** Test users seeded via `auth-server/seed.ts` use "Driver User", "Shipper User", "Admin User" as display names (not "Test Driver" etc.). When writing Playwright tests, match exact names or use regex patterns scoped to `[role="dialog"]` to avoid strict mode violations from duplicate matches.
 - **`openBidReviewDialog` → `openBidReview` Function Name Mismatch:** In `ShipperDashboard.vue`, the template referenced `openBidReviewDialog` but the function was defined as `openBidReview` (line 259). Fixed by renaming the function definition to match the template reference.
 - **DriverDashboard Missing `verificationStatus` Destructuring:** In `useVerificationStatus()` call, `verificationStatus` was not included in the destructuring. Fixed by adding `status: verificationStatus` to the destructured variables.
+- **`AdminTicketDetailView` Fallback Fetching:** The query `useAdminTicket(ticketId)` calls `GET /api/support/admin/{ticket_id}` to retrieve individual ticket details. If the backend instance has not been reloaded or returns an error, the query gracefully catches the exception and falls back to searching `GET /api/support/admin/list` (`SupportTicket[]`) by `id` or `ticket_number`, ensuring zero downtime or broken views during active development.
+- **Assigned Agent Metadata inside `admin_notes`:** To track assigned support agents (`agentId`, `agentName`) without requiring breaking schema migrations on the `support_tickets` table, `parseAssignedAgent` and `formatAssignedAgentNotes` (`useSupportTickets.ts`) store assigned agent information directly inside the `adminNotes` text column using the structured prefix tag `[ASSIGNED_TO:id|name]\n<clean_notes>`.
+- **`@tanstack/vue-table` Column Sorting Synchronization:** In `TicketsTable.vue`, column sorting state (`SortingState`) is bound via `v-model:sorting` to `AdminSupportDesk.vue`, which watches changes and updates `sortField` and `sortOrder` in `useAdminTickets()`. The backend `sort_tickets_list()` utility checks `sort_field` first (supporting sorting across `ticket_number`, `sender_email`, `subject`, `source`, weighted `priority`, weighted `status`, and `created_at`), overriding legacy `sort_by` options when active.
 
 ---
 
@@ -896,12 +910,12 @@ export function useVerificationStatus() {
 | `frontend/src/composables/useAcceptBid.ts` | TanStack Query composable — accept bid mutation |
 | `frontend/src/composables/useUpdateShipmentStatus.ts` | TanStack Query composable — status update mutation |
 | `frontend/src/composables/usePriceEstimate.ts` | TanStack Query composable — AI price estimation mutation |
-| `frontend/src/composables/useSupportTickets.ts` | TanStack Query composable — support tickets (sorted newest first by default), inbound email simulation, and admin helpdesk |
+| `frontend/src/composables/useSupportTickets.ts` | TanStack Query composable — support tickets (`sort_field`/`sort_order` sorting, `useAdminTicket`), inbound email simulation, assigned agent parsers (`[ASSIGNED_TO]`), and admin helpdesk |
 | `frontend/src/lib/api.ts` | Axios instance with Bearer token interceptor and 401 redirect |
 | `frontend/src/components/NavBar.vue` | Sticky nav — RoadLancer brand only when logged out, Help & Support trigger restricted strictly to authenticated users |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
 | `frontend/src/components/UsersTable.vue` | Extracted admin user management table component with role/status badges and suspend actions |
-| `frontend/src/components/TicketsTable.vue` | Extracted support ticket & inbound email table component matching UsersTable design with status/priority badges and inspect/resolve actions |
+| `frontend/src/components/TicketsTable.vue` | `@tanstack/vue-table` support ticket & inbound email table matching UsersTable design with clickable headers for sorting, status/priority/assigned badges, pagination controls, and row click navigation to `/admin/support/:id` |
 | `frontend/src/components/FileUpload.vue` | Reusable image upload component for Base64 document attachments with thumbnail preview & validation |
 | `frontend/src/components/CreateShipmentDialog.vue` | Shipment creation form with all fields (title, goods, weight, pickup/dropoff, vehicle) |
 | `frontend/src/components/PriceConfirmDialog.vue` | Price confirmation pop-up — AI suggested range, custom price input, forced price warning |
@@ -916,9 +930,11 @@ export function useVerificationStatus() {
 | `frontend/src/views/ShipperDashboard.vue` | Shipper dashboard — KPIs, shipment list, create/review buttons |
 | `frontend/src/views/ShipmentDetailView.vue` | Shipment detail — status timeline, bid management, transit actions, AI price estimate |
 | `frontend/src/views/AdminDashboard.vue` | Admin dashboard — compact stats cards, role filtering & sorting selects, user table, forced price badge |
-| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view matching AdminDashboard UI (shared gradient header, 7 Lucide KPI cards, unified search/filter header, and TicketsTable) with ticket sorting and status management |
+| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view matching AdminDashboard UI (shared gradient header with user management link, 7 Lucide KPI cards, unified search/filter header, `@tanstack/vue-table` sorting sync, and modal inspect/reply desk) |
+| `frontend/src/views/AdminTicketDetailView.vue` | Dedicated ticket inspection & resolution page (`/admin/support/:id`) displaying subject, linked profile verification, priority & status badges, assigned agent selection (`[ASSIGNED_TO:id|name]`), quick resolve button, and internal notes |
 | `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (28 tests) |
 | `frontend/src/views/__tests__/renderDashboard.ts` | Shared test helper — wraps render with common stubs |
+| `frontend/src/components/__tests__/TicketsTable.spec.ts` | TicketsTable & agent assignment unit test suite (table layout without sender column, inline agent select & assign events, row actions, and metadata parsing helpers) |
 
 ---
 
@@ -996,11 +1012,11 @@ bun run test:unit:watch    # Watch mode
 | Backend Routes | ✅ | 30+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email) |
 | AI Pricing Engine | ✅ | Rule-based with distance/weight/vehicle/goods/fuel/labour/seasonal factors |
 | Database Schema | ✅ | 9 models (users, sessions, shipments, bids, verifications, support_tickets, etc.) |
-| Frontend Views | ✅ | 13 views (all dashboards, login, register, home, shipment detail, verification, admin support desk) |
+| Frontend Views | ✅ | 14 views (all dashboards, login, register, home, shipment detail, verification, admin support desk, admin ticket detail view) |
 | Frontend Composables | ✅ | 13 composables (all TanStack Query-based) |
-| Frontend Components | ✅ | 10 components (dialogs, UsersTable, TicketsTable, forms, nav, support email simulator) |
+| Frontend Components | ✅ | 10 components (dialogs, UsersTable, TicketsTable with `@tanstack/vue-table`, forms, nav, support email simulator) |
 | Shipment Flow | ✅ | Create → AI pricing → Price confirm → Bidding → Accept → Transit |
-| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets sorted newest first with account linking, standardized Admin Helpdesk UI, and restricted NavBar trigger |
+| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets with `@tanstack/vue-table` column sorting, assigned agents (`[ASSIGNED_TO]`), account linking, standardized Admin Helpdesk UI, & dedicated ticket resolution view (`/admin/support/:id`) |
 | Forced Price Protection | ✅ | Shipper override with admin-only visibility |
 | Marketing Landing Page | ✅ | Public home page with features, how-it-works, stats |
 | User Registration | ✅ | Driver and Shipper registration with Zod validation & pending admin approval flow |
