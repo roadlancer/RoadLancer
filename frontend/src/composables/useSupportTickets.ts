@@ -28,14 +28,37 @@ export interface SupportTicket {
 
 export function useMyTickets() {
   const { user } = useAuth()
-  return useQuery({
-    queryKey: computed(() => ['my-support-tickets', user.value?.id]),
+  const searchQuery = ref('')
+  const statusFilter = ref('all')
+  const sortBy = ref('newest')
+
+  const queryKey = computed(() => [
+    'my-support-tickets',
+    user.value?.id,
+    { search: searchQuery.value, status: statusFilter.value, sort_by: sortBy.value },
+  ])
+
+  const query = useQuery({
+    queryKey,
     queryFn: async () => {
-      const { data } = await api.get('/support/tickets/my')
+      const params: Record<string, string> = { sort_by: sortBy.value }
+      if (statusFilter.value !== 'all') params.status = statusFilter.value
+      if (searchQuery.value) params.search = searchQuery.value
+      const { data } = await api.get('/support/tickets/my', { params })
       return data as SupportTicket[]
     },
     enabled: computed(() => !!user.value),
   })
+
+  return {
+    data: query.data,
+    tickets: query.data,
+    isLoading: query.isLoading,
+    refetch: query.refetch,
+    searchQuery,
+    statusFilter,
+    sortBy,
+  }
 }
 
 export function useAdminTickets() {
@@ -43,16 +66,17 @@ export function useAdminTickets() {
   const searchQuery = ref('')
   const statusFilter = ref('all')
   const sourceFilter = ref('all')
+  const sortBy = ref('newest')
 
   const queryKey = computed(() => [
     'admin-support-tickets',
-    { search: searchQuery.value, status: statusFilter.value, source: sourceFilter.value },
+    { search: searchQuery.value, status: statusFilter.value, source: sourceFilter.value, sort_by: sortBy.value },
   ])
 
   const query = useQuery({
     queryKey,
     queryFn: async () => {
-      const params: Record<string, string> = {}
+      const params: Record<string, string> = { sort_by: sortBy.value }
       if (statusFilter.value !== 'all') params.status = statusFilter.value
       if (sourceFilter.value !== 'all') params.source = sourceFilter.value
       if (searchQuery.value) params.search = searchQuery.value
@@ -112,6 +136,7 @@ export function useAdminTickets() {
     searchQuery,
     statusFilter,
     sourceFilter,
+    sortBy,
     updateStatus: updateStatusMutation.mutateAsync,
     isUpdating: updateStatusMutation.isPending,
   }

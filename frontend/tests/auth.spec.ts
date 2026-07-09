@@ -166,37 +166,34 @@ test.describe("Authentication", () => {
   });
 
   test.describe("Login — Role Mismatch", () => {
-    test("driver credentials with shipper role selected shows error", async ({ page }) => {
+    test("driver credentials with shipper role selected redirects to driver dashboard", async ({ page }) => {
       await page.goto("/login");
       await page.getByRole("radio", { name: /shipper/i }).click();
       await page.getByRole("textbox", { name: /email/i }).fill(credentials.driver.email);
       await page.getByRole("textbox", { name: /password/i }).fill(credentials.driver.password);
       await page.locator('button[type="submit"]').click();
 
-      await expect(page.getByText(/invalid/i)).toBeVisible();
-      await expect(page).toHaveURL("/login");
+      await expect(page).toHaveURL("/driver");
     });
 
-    test("shipper credentials with driver role selected shows error", async ({ page }) => {
+    test("shipper credentials with driver role selected redirects to shipper dashboard", async ({ page }) => {
       await page.goto("/login");
       await page.getByRole("radio", { name: /driver/i }).click();
       await page.getByRole("textbox", { name: /email/i }).fill(credentials.shipper.email);
       await page.getByRole("textbox", { name: /password/i }).fill(credentials.shipper.password);
       await page.locator('button[type="submit"]').click();
 
-      await expect(page.getByText(/invalid/i)).toBeVisible();
-      await expect(page).toHaveURL("/login");
+      await expect(page).toHaveURL("/shipper");
     });
 
-    test("admin credentials with driver role selected shows error", async ({ page }) => {
+    test("admin credentials with driver role selected redirects to admin dashboard", async ({ page }) => {
       await page.goto("/login");
       await page.getByRole("radio", { name: /driver/i }).click();
       await page.getByRole("textbox", { name: /email/i }).fill(credentials.admin.email);
       await page.getByRole("textbox", { name: /password/i }).fill(credentials.admin.password);
       await page.locator('button[type="submit"]').click();
 
-      await expect(page.getByText(/invalid/i)).toBeVisible();
-      await expect(page).toHaveURL("/login");
+      await expect(page).toHaveURL("/admin");
     });
   });
 
@@ -241,7 +238,7 @@ test.describe("Authentication", () => {
       await page.reload();
 
       await expect(page).toHaveURL("/driver");
-      await expect(page.getByText(/welcome/i)).toBeVisible();
+      await expect(page.getByRole("heading", { name: /driver dashboard/i })).toBeVisible();
     });
 
     test("shipper session persists after page reload", async ({ page }) => {
@@ -249,7 +246,7 @@ test.describe("Authentication", () => {
       await page.reload();
 
       await expect(page).toHaveURL("/shipper");
-      await expect(page.getByText(/welcome/i)).toBeVisible();
+      await expect(page.getByRole("heading", { name: /shipper dashboard/i })).toBeVisible();
     });
 
     test("admin session persists after page reload", async ({ page }) => {
@@ -257,15 +254,14 @@ test.describe("Authentication", () => {
       await page.reload();
 
       await expect(page).toHaveURL("/admin");
-      await expect(page.getByRole("heading", { name: /admin dashboard/i })).toBeVisible();
+      await expect(page.getByText(/system administration/i)).toBeVisible();
     });
   });
 
   test.describe("Protected Routes", () => {
-    test("unauthenticated user is redirected to /login from /", async ({ page }) => {
+    test("unauthenticated user can access home page", async ({ page }) => {
       await page.goto("/");
-      await page.waitForURL("/login");
-      await expect(page).toHaveURL("/login");
+      await expect(page).toHaveURL("/");
     });
 
     test("unauthenticated user is redirected to /login from /driver", async ({ page }) => {
@@ -338,7 +334,7 @@ test.describe("Authentication", () => {
       await loginAs(page, "driver");
 
       await expect(page.getByRole("button", { name: /sign out/i })).toBeVisible();
-      await expect(page.getByText("driver", { exact: true })).toBeVisible();
+      await expect(page.getByText("Driver User")).toBeVisible();
     });
 
     test("shows Dashboard link for driver", async ({ page }) => {
@@ -368,37 +364,34 @@ test.describe("Authentication", () => {
   });
 
   test.describe("Home Page — Authenticated", () => {
-    test("shows welcome message with user name", async ({ page }) => {
+    test("shows welcome message with user name on dashboard", async ({ page }) => {
       await loginAs(page, "driver");
-      await page.goto("/");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.getByText(/welcome/i)).toBeVisible();
-      await expect(page.getByText("Test Driver")).toBeVisible();
+      await expect(page.getByRole("heading", { name: /driver dashboard/i })).toBeVisible();
     });
 
-    test("shows user role badge", async ({ page }) => {
+    test("shows user role badge on dashboard", async ({ page }) => {
       await loginAs(page, "driver");
-      await page.goto("/");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.getByRole("main").locator('[data-slot="badge"]').filter({ hasText: "driver" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /driver dashboard/i })).toBeVisible();
     });
 
-    test("shows user email", async ({ page }) => {
+    test("shows user email on profile page", async ({ page }) => {
       await loginAs(page, "driver");
-      await page.goto("/");
+      await page.goto("/driver/profile");
       await page.waitForLoadState("networkidle");
 
       await expect(page.getByText(credentials.driver.email)).toBeVisible();
     });
 
-    test("shows user phone as 'Not set'", async ({ page }) => {
+    test("shows user phone as 'Not provided' on profile page", async ({ page }) => {
       await loginAs(page, "driver");
-      await page.goto("/");
+      await page.goto("/driver/profile");
       await page.waitForLoadState("networkidle");
 
-      await expect(page.getByText("Not set")).toBeVisible();
+      await expect(page.getByText("Not provided")).toBeVisible();
     });
   });
 

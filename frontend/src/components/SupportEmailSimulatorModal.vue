@@ -21,8 +21,39 @@ const emit = defineEmits<{
 }>()
 
 const { user } = useAuth()
-const { data: myTickets, isLoading: isLoadingTickets, refetch: refetchMyTickets } = useMyTickets()
+const {
+  data: myTickets,
+  isLoading: isLoadingTickets,
+  refetch: refetchMyTickets,
+  searchQuery,
+  statusFilter,
+  sortBy,
+} = useMyTickets()
 const { simulateEmail, isSimulatingEmail, createTicket, isCreatingTicket } = useSupportMutations()
+
+const sortedMyTickets = computed(() => {
+  const list = [...(myTickets.value || [])]
+  const priorityMap: Record<string, number> = { urgent: 4, high: 3, normal: 2, low: 1 }
+  const statusMap: Record<string, number> = { open: 4, in_progress: 3, resolved: 2, closed: 1 }
+
+  return list.sort((a, b) => {
+    const timeA = new Date(a.created_at).getTime() || 0
+    const timeB = new Date(b.created_at).getTime() || 0
+
+    if (sortBy.value === 'oldest') {
+      return timeA - timeB
+    }
+    if (sortBy.value === 'priority') {
+      const diff = (priorityMap[b.priority || 'normal'] || 0) - (priorityMap[a.priority || 'normal'] || 0)
+      return diff !== 0 ? diff : timeB - timeA
+    }
+    if (sortBy.value === 'status') {
+      const diff = (statusMap[b.status || 'open'] || 0) - (statusMap[a.status || 'open'] || 0)
+      return diff !== 0 ? diff : timeB - timeA
+    }
+    return timeB - timeA
+  })
+})
 
 const activeTab = ref(props.defaultTab || 'email')
 const lastCreatedTicket = ref<{ number: string; message: string } | null>(null)
@@ -274,16 +305,54 @@ function getStatusBadgeClass(status: string) {
           <div v-else-if="isLoadingTickets" class="text-center py-8 text-gray-500 text-xs">
             Loading your tickets...
           </div>
-          <div v-else-if="!myTickets || myTickets.length === 0" class="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-            <p class="text-xs font-bold text-gray-600">No support tickets found.</p>
-            <p class="text-[11px] text-gray-400 mt-1">Use the Simulate Inbound Email tab to submit your first ticket!</p>
-          </div>
-          <div v-else class="space-y-3 max-h-[350px] overflow-y-auto pr-1">
-            <div
-              v-for="t in myTickets"
-              :key="t.id"
-              class="p-4 rounded-xl border border-gray-200 bg-gray-50/50 hover:bg-white hover:shadow-md transition-all duration-200 space-y-2"
-            >
+          <div v-else class="space-y-3">
+            <!-- Filter & Sort Bar for My Tickets -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
+              <div class="w-full sm:flex-1">
+                <Input
+                  v-model="searchQuery"
+                  placeholder="Search subject, #, or message..."
+                  class="h-8 text-xs bg-white border-gray-300 rounded-lg"
+                />
+              </div>
+              <div class="flex items-center gap-2 w-full sm:w-auto">
+                <select
+                  v-model="statusFilter"
+                  class="h-8 px-2.5 bg-white border border-gray-300 rounded-lg text-xs font-bold text-gray-700 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="open">Open / Pending</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+                <select
+                  v-model="sortBy"
+                  class="h-8 px-2.5 bg-white border border-gray-300 rounded-lg text-xs font-bold text-teal-800 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="priority">Priority</option>
+                  <option value="status">Status</option>
+                </select>
+              </div>
+            </div>
+
+            <div v-if="sortedMyTickets && sortedMyTickets.length > 0" class="flex items-center justify-between px-1 text-[11px] text-gray-500 font-medium">
+              <span>Showing <span class="font-bold text-gray-900">{{ sortedMyTickets.length }}</span> ticket{{ sortedMyTickets.length === 1 ? '' : 's' }}</span>
+              <span class="font-mono text-teal-700 font-bold bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">Sorted by: {{ sortBy === 'newest' ? 'Newest First' : sortBy === 'oldest' ? 'Oldest First' : sortBy === 'priority' ? 'Priority' : 'Status' }}</span>
+            </div>
+
+            <div v-if="!sortedMyTickets || sortedMyTickets.length === 0" class="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+              <p class="text-xs font-bold text-gray-600">No support tickets found.</p>
+              <p class="text-[11px] text-gray-400 mt-1">Try adjusting your filters or submit a new ticket!</p>
+            </div>
+            <div v-else class="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+              <div
+                v-for="t in sortedMyTickets"
+                :key="t.id"
+                class="p-4 rounded-xl border border-gray-200 bg-gray-50/50 hover:bg-white hover:shadow-md transition-all duration-200 space-y-2"
+              >
               <div class="flex items-center justify-between gap-2 flex-wrap">
                 <div class="flex items-center gap-2">
                   <Badge class="bg-gray-900 text-white font-mono text-xs font-bold px-2 py-0.5">
@@ -319,6 +388,7 @@ function getStatusBadgeClass(status: string) {
               </div>
             </div>
           </div>
+        </div>
         </TabsContent>
 
         <!-- Tab 3: Direct Web Ticket -->

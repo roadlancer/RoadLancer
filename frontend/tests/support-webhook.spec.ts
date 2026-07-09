@@ -90,7 +90,7 @@ test.describe("Support Ticket & Inbound Email Webhook System", () => {
 
     // Navigate to Support Desk
     await page.goto("/admin/support");
-    await expect(page.getByText("Support Tickets & Profile Edit Trails")).toBeVisible();
+    await expect(page.getByText("Support Desk & Inbound Emails")).toBeVisible();
 
     // Verify our generated ticket is present in the table
     await expect(page.getByText(ticket_number)).toBeVisible();

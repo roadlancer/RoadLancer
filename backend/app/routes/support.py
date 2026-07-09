@@ -213,8 +213,44 @@ async def create_web_ticket(
     return ticket_to_dict(ticket, user_map)
 
 
+
+def sort_tickets_list(tickets: list, sort_by: Optional[str] = "newest") -> list:
+    from datetime import datetime
+
+    def get_timestamp(t):
+        val = getattr(t, "createdAt", None)
+        if isinstance(val, datetime):
+            return val.timestamp() if hasattr(val, "timestamp") else 0
+        if isinstance(val, str):
+            try:
+                return datetime.fromisoformat(val.replace("Z", "+00:00")).timestamp()
+            except Exception:
+                return 0
+        return 0
+
+    priority_map = {"urgent": 4, "high": 3, "normal": 2, "low": 1}
+    status_map = {"open": 4, "in_progress": 3, "resolved": 2, "closed": 1}
+
+    if sort_by == "oldest":
+        tickets.sort(key=lambda t: get_timestamp(t), reverse=False)
+    elif sort_by == "priority":
+        tickets.sort(key=lambda t: (priority_map.get(getattr(t, "priority", "normal") or "normal", 0), get_timestamp(t)), reverse=True)
+    elif sort_by == "status":
+        tickets.sort(key=lambda t: (status_map.get(getattr(t, "status", "open") or "open", 0), get_timestamp(t)), reverse=True)
+    else:
+        # Default: newest first
+        tickets.sort(key=lambda t: get_timestamp(t), reverse=True)
+    return tickets
+
+
 @router.get("/tickets/my")
-async def get_my_tickets(user: dict = Depends(get_current_user)):
+async def get_my_tickets(
+    status: Optional[str] = None,
+    source: Optional[str] = None,
+    search: Optional[str] = None,
+    sort_by: Optional[str] = "newest",
+    user: dict = Depends(get_current_user),
+):
     """
     List all support tickets submitted by or linked to the current logged-in user.
     """
@@ -227,6 +263,21 @@ async def get_my_tickets(user: dict = Depends(get_current_user)):
         if t.userId == user["id"] or (t.senderEmail and t.senderEmail.lower() == user["email"].lower())
     ]
 
+    if status and status in ("open", "in_progress", "resolved", "closed"):
+        my_tickets = [t for t in my_tickets if t.status == status]
+    if source and source in ("email", "web", "profile_edit"):
+        my_tickets = [t for t in my_tickets if t.source == source]
+    if search:
+        search_lower = search.lower()
+        my_tickets = [
+            t for t in my_tickets
+            if search_lower in (t.ticketNumber or "").lower()
+            or search_lower in (t.subject or "").lower()
+            or search_lower in (t.message or "").lower()
+        ]
+
+    my_tickets = sort_tickets_list(my_tickets, sort_by)
+
     db_user = await db.user.find_unique(where={"id": user["id"]})
     user_map = {user["id"]: db_user} if db_user else {}
     return [ticket_to_dict(t, user_map) for t in my_tickets]
@@ -237,6 +288,7 @@ async def admin_list_tickets(
     status: Optional[str] = None,
     source: Optional[str] = None,
     search: Optional[str] = None,
+    sort_by: Optional[str] = "newest",
     admin: dict = Depends(get_admin_user),
 ):
     """
@@ -261,7 +313,10 @@ async def admin_list_tickets(
             or search_lower in (t.senderEmail or "").lower()
             or search_lower in (t.senderName or "").lower()
             or search_lower in (t.subject or "").lower()
+            or search_lower in (t.message or "").lower()
         ]
+
+    tickets = sort_tickets_list(tickets, sort_by)
 
     users = await db.user.find_many()
     user_map = {u.id: u for u in users}

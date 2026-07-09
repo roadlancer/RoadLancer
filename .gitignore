@@ -5,7 +5,7 @@
 
 # Node
 node_modules/
-package-lock.json
+bun.lock
 
 # Python
 __pycache__/
