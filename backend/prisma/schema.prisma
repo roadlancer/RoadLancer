@@ -243,8 +243,23 @@ model support_tickets {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  user user? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user    user?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  replies ticket_replies[]
 
   @@map("support_tickets")
+}
+
+model ticket_replies {
+  id         String   @id @default(uuid())
+  ticketId   String   @map("ticket_id")
+  senderName String   @map("sender_name")
+  senderRole String   @map("sender_role") // "admin" or "user"
+  senderType String   @map("sender_type") // "agent" or "customer"
+  message    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  ticket support_tickets @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_replies")
 }
 
