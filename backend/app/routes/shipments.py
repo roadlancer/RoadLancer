@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from decimal import Decimal
 from app.routes.auth import get_current_user
@@ -10,13 +10,13 @@ router = APIRouter()
 
 
 class ShipmentCreate(BaseModel):
-    title: str
-    goods_category: str
+    title: str = Field(max_length=200)
+    goods_category: str = Field(max_length=50)
     weight_kg: float
-    pickup_address: str
-    dropoff_address: str
+    pickup_address: str = Field(max_length=300)
+    dropoff_address: str = Field(max_length=300)
     distance_km: float
-    vehicle_type: str
+    vehicle_type: str = Field(max_length=50)
     shipper_budget: Optional[float] = None
     is_forced_price: Optional[bool] = False
     custom_min_price: Optional[float] = None
@@ -26,13 +26,13 @@ class ShipmentCreate(BaseModel):
 class PriceEstimateRequest(BaseModel):
     distance_km: float
     weight_kg: float
-    vehicle_type: str
-    goods_category: str
+    vehicle_type: str = Field(max_length=50)
+    goods_category: str = Field(max_length=50)
 
 
 class BidCreate(BaseModel):
     amount: float
-    message: Optional[str] = None
+    message: Optional[str] = Field(default=None, max_length=1000)
 
 
 def shipment_to_dict(s) -> dict:

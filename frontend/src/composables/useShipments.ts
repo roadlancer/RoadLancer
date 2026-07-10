@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/vue-query'
 import api from '@/lib/api'
+import { sanitizeText } from '@/lib/sanitize'
 
 export interface Shipment {
   id: string
@@ -24,12 +25,22 @@ export interface Shipment {
   updated_at: string
 }
 
+export function sanitizeShipment(shipment: Shipment): Shipment {
+  if (!shipment) return shipment
+  return {
+    ...shipment,
+    title: sanitizeText(shipment.title),
+    pickup_address: sanitizeText(shipment.pickup_address),
+    dropoff_address: sanitizeText(shipment.dropoff_address),
+  }
+}
+
 export function useShipments() {
   const query = useQuery({
     queryKey: ['shipments'],
     queryFn: async () => {
       const { data } = await api.get('/shipments/')
-      return data as Shipment[]
+      return (data as Shipment[]).map(sanitizeShipment)
     },
     staleTime: 15_000,
   })

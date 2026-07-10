@@ -235,6 +235,7 @@ function getStatusBadgeClass(status: string) {
               <Input
                 v-model="emailForm.from_email"
                 placeholder="e.g. driver@roadlancer.com"
+                maxlength="255"
                 class="bg-gray-50 border-gray-300 font-mono text-xs"
               />
             </div>
@@ -243,6 +244,7 @@ function getStatusBadgeClass(status: string) {
               <Input
                 v-model="emailForm.from_name"
                 placeholder="e.g. Dave Driver"
+                maxlength="100"
                 class="bg-gray-50 border-gray-300 text-xs"
               />
             </div>
@@ -254,8 +256,10 @@ function getStatusBadgeClass(status: string) {
               <Input
                 v-model="emailForm.subject"
                 placeholder="e.g. [PROFILE EDIT REQUEST] Update DL Number"
+                maxlength="200"
                 class="bg-gray-50 border-gray-300 text-xs font-medium"
               />
+              <span class="text-[10px] text-muted-foreground font-mono">{{ emailForm.subject.length }}/200</span>
             </div>
             <div class="space-y-1.5">
               <Label class="text-xs font-bold text-gray-700">Priority</Label>
@@ -276,9 +280,11 @@ function getStatusBadgeClass(status: string) {
             <textarea
               v-model="emailForm.body"
               rows="4"
+              maxlength="5000"
               placeholder="Type your message as if writing an email to support@roadlancer.com..."
               class="flex w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed"
             />
+            <span class="text-[10px] text-muted-foreground font-mono">{{ emailForm.body.length }}/5000</span>
           </div>
 
           <div class="pt-2 flex justify-end">
@@ -403,8 +409,10 @@ function getStatusBadgeClass(status: string) {
                 <Input
                   v-model="webForm.subject"
                   placeholder="e.g. Question regarding AI pricing estimate"
+                  maxlength="200"
                   class="bg-gray-50 border-gray-300 text-xs font-medium"
                 />
+                <span class="text-[10px] text-muted-foreground font-mono">{{ webForm.subject.length }}/200</span>
               </div>
               <div class="space-y-1.5">
                 <Label class="text-xs font-bold text-gray-700">Priority</Label>
@@ -425,9 +433,11 @@ function getStatusBadgeClass(status: string) {
               <textarea
                 v-model="webForm.message"
                 rows="4"
+                maxlength="5000"
                 placeholder="Describe your issue or question in detail..."
                 class="flex w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-teal-500 leading-relaxed"
               />
+              <span class="text-[10px] text-muted-foreground font-mono">{{ webForm.message.length }}/5000</span>
             </div>
 
             <div class="pt-2 flex justify-end">

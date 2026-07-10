@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import api from '@/lib/api'
 import { useAuth } from './useAuth'
 import { useAdminUsers } from './useAdminUsers'
+import { sanitize, sanitizeText } from '@/lib/sanitize'
 
 export interface SupportTicketReply {
   id: string
@@ -73,6 +74,22 @@ export function formatAssignedAgentNotes(agentId: string | null, agentName: stri
   return trimmed ? `[ASSIGNED_TO:${agentId}|${agentName}]\n${trimmed}` : `[ASSIGNED_TO:${agentId}|${agentName}]`
 }
 
+export function sanitizeTicket(ticket: SupportTicket): SupportTicket {
+  if (!ticket) return ticket
+  return {
+    ...ticket,
+    subject: sanitizeText(ticket.subject),
+    message: sanitize(ticket.message),
+    sender_name: ticket.sender_name ? sanitizeText(ticket.sender_name) : null,
+    admin_notes: ticket.admin_notes ? sanitize(ticket.admin_notes) : null,
+    replies: ticket.replies ? ticket.replies.map((r) => ({
+      ...r,
+      sender_name: r.sender_name ? sanitizeText(r.sender_name) : null,
+      message: sanitize(r.message),
+    })) : []
+  }
+}
+
 export function useSupportAgents() {
   const { data: adminUsers } = useAdminUsers()
   return computed<SupportAgent[]>(() => {
@@ -128,7 +145,7 @@ export function useMyTickets() {
       if (statusFilter.value !== 'all') params.status = statusFilter.value
       if (searchQuery.value) params.search = searchQuery.value
       const { data } = await api.get('/support/tickets/my', { params })
-      return data as SupportTicket[]
+      return (data as SupportTicket[]).map(sanitizeTicket)
     },
     enabled: computed(() => !!user.value),
   })
@@ -182,7 +199,7 @@ export function useAdminTickets() {
       if (sourceFilter.value !== 'all') params.source = sourceFilter.value
       if (searchQuery.value) params.search = searchQuery.value
       const { data } = await api.get('/support/admin/list', { params })
-      return data as SupportTicket[]
+      return (data as SupportTicket[]).map(sanitizeTicket)
     },
   })
 
@@ -219,10 +236,10 @@ export function useAdminTickets() {
       const { data } = await api.put(`/support/admin/${id}/status`, {
         status,
         category,
-        admin_notes: adminNotes,
+        admin_notes: adminNotes ? sanitize(adminNotes) : undefined,
         priority,
       })
-      return data as SupportTicket
+      return sanitizeTicket(data as SupportTicket)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] })
@@ -267,7 +284,10 @@ export function useSupportMutations() {
         { ...payload, secret },
         { headers: { 'x-webhook-secret': secret } }
       )
-      return data as {
+      return {
+        ...data,
+        ticket: sanitizeTicket(data.ticket)
+      } as {
         success: boolean
         ticket_number: string
         ticket: SupportTicket
@@ -288,8 +308,12 @@ export function useSupportMutations() {
       priority?: string
       source?: string
     }) => {
-      const { data } = await api.post('/support/tickets', payload)
-      return data as SupportTicket
+      const { data } = await api.post('/support/tickets', {
+        ...payload,
+        subject: sanitizeText(payload.subject),
+        message: sanitize(payload.message),
+      })
+      return sanitizeTicket(data as SupportTicket)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-support-tickets'] })
@@ -300,8 +324,8 @@ export function useSupportMutations() {
 
   const replyTicketMutation = useMutation({
     mutationFn: async ({ ticketId, message }: { ticketId: string; message: string }) => {
-      const { data } = await api.post(`/support/tickets/${ticketId}/replies`, { message })
-      return data as SupportTicket
+      const { data } = await api.post(`/support/tickets/${ticketId}/replies`, { message: sanitize(message) })
+      return sanitizeTicket(data as SupportTicket)
     },
     onSuccess: (data, variables) => {
       queryClient.setQueryData(['admin-support-ticket', variables.ticketId], data)
@@ -328,7 +352,7 @@ export function useAdminTicket(ticketId: Ref<string>) {
     queryFn: async () => {
       try {
         const { data } = await api.get(`/support/admin/${ticketId.value}`)
-        return data as SupportTicket
+        return sanitizeTicket(data as SupportTicket)
       } catch (err: any) {
         // If the backend server has not reloaded the new GET /admin/{ticket_id} endpoint,
         // fallback to /support/admin/list which is already active and contains all tickets.
@@ -337,7 +361,7 @@ export function useAdminTicket(ticketId: Ref<string>) {
           (t) => t.id === ticketId.value || t.ticket_number === ticketId.value
         )
         if (found) {
-          return found
+          return sanitizeTicket(found)
         }
         throw err
       }
@@ -349,10 +373,10 @@ export function useAdminTicket(ticketId: Ref<string>) {
     mutationFn: async ({ message, senderName }: { message: string; senderName?: string }) => {
       const targetId = query.data.value?.id || ticketId.value
       const { data } = await api.post(`/support/admin/${targetId}/replies`, {
-        message,
-        sender_name: senderName,
+        message: sanitize(message),
+        sender_name: senderName ? sanitizeText(senderName) : undefined,
       })
-      return data as SupportTicket
+      return sanitizeTicket(data as SupportTicket)
     },
     onSuccess: async (updatedTicket) => {
       queryClient.setQueryData(['admin-support-ticket', ticketId.value], updatedTicket)

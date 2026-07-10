@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.database import db
 from app.routes.auth import get_current_user
 from app.routes.admin import get_admin_user
@@ -14,34 +14,34 @@ router = APIRouter()
 
 
 class InboundEmailRequest(BaseModel):
-    from_email: str
-    from_name: Optional[str] = None
-    subject: str
-    body: str
-    category: Optional[str] = "general"
-    priority: Optional[str] = "normal"
-    source: Optional[str] = "email"
+    from_email: str = Field(max_length=255)
+    from_name: Optional[str] = Field(default=None, max_length=100)
+    subject: str = Field(max_length=200)
+    body: str = Field(max_length=5000)
+    category: Optional[str] = Field(default="general", max_length=50)
+    priority: Optional[str] = Field(default="normal", max_length=20)
+    source: Optional[str] = Field(default="email", max_length=20)
     secret: Optional[str] = None
 
 
 class CreateTicketRequest(BaseModel):
-    subject: str
-    message: str
-    category: Optional[str] = "general"
-    priority: Optional[str] = "normal"
-    source: Optional[str] = "web"
+    subject: str = Field(max_length=200)
+    message: str = Field(max_length=5000)
+    category: Optional[str] = Field(default="general", max_length=50)
+    priority: Optional[str] = Field(default="normal", max_length=20)
+    source: Optional[str] = Field(default="web", max_length=20)
 
 
 class UpdateTicketStatusRequest(BaseModel):
-    status: Optional[str] = None
-    category: Optional[str] = None
-    admin_notes: Optional[str] = None
-    priority: Optional[str] = None
+    status: Optional[str] = Field(default=None, max_length=20)
+    category: Optional[str] = Field(default=None, max_length=50)
+    admin_notes: Optional[str] = Field(default=None, max_length=2000)
+    priority: Optional[str] = Field(default=None, max_length=20)
 
 
 class CreateTicketReplyRequest(BaseModel):
-    message: str
-    sender_name: Optional[str] = None
+    message: str = Field(max_length=5000)
+    sender_name: Optional[str] = Field(default=None, max_length=100)
 
 
 async def ensure_ticket_replies_table():

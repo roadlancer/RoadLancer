@@ -167,10 +167,12 @@ function onAgentChange(e: Event) {
           :value="notes"
           @input="emit('update:notes', ($event.target as HTMLTextAreaElement).value)"
           rows="6"
+          maxlength="2000"
           placeholder="Document resolution actions, root cause analysis, or follow-up notes..."
           class="w-full p-3.5 bg-background border border-input rounded-xl text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow resize-y font-sans leading-relaxed"
           data-testid="notes-textarea"
         ></textarea>
+        <span class="text-[10px] text-muted-foreground font-mono">{{ (notes || '').length }}/2000</span>
       </div>
     </CardContent>
 
