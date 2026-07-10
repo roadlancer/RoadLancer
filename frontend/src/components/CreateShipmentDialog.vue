@@ -39,11 +39,11 @@ const errors = reactive({
 })
 
 const formSchema = z.object({
-  title: z.string().min(3, 'Title must be at least 3 characters'),
+  title: z.string().min(3, 'Title must be at least 3 characters').max(200, 'Title must be at most 200 characters'),
   goods_category: z.string(),
   weight_kg: z.coerce.number().min(1, 'Weight must be at least 1 kg'),
-  pickup_address: z.string().min(5, 'Enter a valid pickup address'),
-  dropoff_address: z.string().min(5, 'Enter a valid dropoff address'),
+  pickup_address: z.string().min(5, 'Enter a valid pickup address').max(300, 'Address must be at most 300 characters'),
+  dropoff_address: z.string().min(5, 'Enter a valid dropoff address').max(300, 'Address must be at most 300 characters'),
   distance_km: z.coerce.number().min(1, 'Distance must be at least 1 km'),
   vehicle_type: z.string(),
 })

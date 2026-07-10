@@ -229,17 +229,17 @@ model user_verifications {
 
 model support_tickets {
   id           String   @id @default(uuid())
-  ticketNumber String   @unique @map("ticket_number")
-  senderEmail  String   @map("sender_email")
-  senderName   String?  @map("sender_name")
-  subject      String
-  message      String
-  category     String   @default("general")
-  status       String   @default("open")
-  priority     String   @default("normal")
-  source       String   @default("email")
+  ticketNumber String   @unique @map("ticket_number") @db.VarChar(20)
+  senderEmail  String   @map("sender_email") @db.VarChar(255)
+  senderName   String?  @map("sender_name") @db.VarChar(100)
+  subject      String   @db.VarChar(200)
+  message      String   @db.VarChar(5000)
+  category     String   @default("general") @db.VarChar(50)
+  status       String   @default("open") @db.VarChar(20)
+  priority     String   @default("normal") @db.VarChar(20)
+  source       String   @default("email") @db.VarChar(20)
   userId       String?  @map("user_id")
-  adminNotes   String?  @map("admin_notes")
+  adminNotes   String?  @map("admin_notes") @db.VarChar(2000)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -252,10 +252,11 @@ model support_tickets {
 model ticket_replies {
   id         String   @id @default(uuid())
   ticketId   String   @map("ticket_id")
-  senderName String   @map("sender_name")
-  senderRole String   @map("sender_role") // "admin" or "user"
-  senderType String   @map("sender_type") // "agent" or "customer"
-  message    String
+  senderName String   @map("sender_name") @db.VarChar(100)
+  senderRole String   @map("sender_role") @db.VarChar(20) // "admin" or "user"
+  senderType String   @map("sender_type") @db.VarChar(20) // "agent" or "customer"
+  message    String   @db.VarChar(5000)
+  bodyHtml   String?  @map("body_html") @db.VarChar(10000)
   createdAt  DateTime @default(now()) @map("created_at")
 
   ticket support_tickets @relation(fields: [ticketId], references: [id], onDelete: Cascade)

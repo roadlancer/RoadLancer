@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Reply, CheckCircle, CornerDownRight } from '@lucide/vue'
+import { sanitize, sanitizeText } from '@/lib/sanitize'
 
 export interface ReplyFormProps {
   senderEmail?: string
@@ -39,8 +40,8 @@ function handleSubmit() {
   if (!message.value.trim() || props.isSubmitting) return
   const finalSenderName = senderName.value.trim() || props.defaultSenderName || 'Sarah Jenkins (Support Lead)'
   emit('submit', {
-    message: message.value.trim(),
-    senderName: finalSenderName,
+    message: sanitize(message.value.trim()),
+    senderName: sanitizeText(finalSenderName),
   })
   message.value = ''
 }
@@ -70,6 +71,7 @@ function handleSubmit() {
               type="text"
               v-model="senderName"
               :placeholder="defaultSenderName || 'Sarah Jenkins (Support Lead)'"
+              maxlength="100"
               class="w-full h-10 px-3 bg-background border border-input rounded-xl text-sm font-medium text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
               data-testid="reply-sender-name-input"
             />
@@ -91,10 +93,12 @@ function handleSubmit() {
             v-model="message"
             rows="4"
             required
+            maxlength="5000"
             placeholder="Type your detailed resolution response or instructions here..."
             class="w-full p-3.5 bg-background border border-input rounded-xl text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow resize-y font-sans"
             data-testid="reply-message-textarea"
           ></textarea>
+          <span class="text-[10px] text-muted-foreground font-mono">{{ message.length }}/5000</span>
         </div>
       </CardContent>
 

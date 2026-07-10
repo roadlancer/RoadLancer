@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/vue-query'
 import api from '@/lib/api'
+import { sanitizeText } from '@/lib/sanitize'
 
 export interface CreateShipmentPayload {
   title: string
@@ -20,7 +21,12 @@ export function useCreateShipment() {
 
   return useMutation({
     mutationFn: async (payload: CreateShipmentPayload) => {
-      const { data } = await api.post('/shipments/', payload)
+      const { data } = await api.post('/shipments/', {
+        ...payload,
+        title: sanitizeText(payload.title),
+        pickup_address: sanitizeText(payload.pickup_address),
+        dropoff_address: sanitizeText(payload.dropoff_address),
+      })
       return data
     },
     onSuccess: () => {
