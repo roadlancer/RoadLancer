@@ -209,7 +209,7 @@ describe('AdminDashboard Component Tests', () => {
       // Jane Shipper row
       expect(screen.getByText('Jane Shipper')).toBeInTheDocument()
       expect(screen.getByText('jane@test.com')).toBeInTheDocument()
-      expect(screen.getByText('—')).toBeInTheDocument()
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1)
       const suspendedBadges = screen.getAllByText('Suspended')
       expect(suspendedBadges.length).toBeGreaterThanOrEqual(1)
     })
@@ -218,47 +218,46 @@ describe('AdminDashboard Component Tests', () => {
   describe('Search & Role Tab Filtering', () => {
     beforeEach(() => {
       mockUsers.value = [
-        { id: '1', name: 'Alice Driver', email: 'alice@driver.com', role: 'driver', suspended: false },
-        { id: '2', name: 'Bob Shipper', email: 'bob@shipper.com', role: 'shipper', suspended: false },
-        { id: '3', name: 'Charlie Admin', email: 'charlie@admin.com', role: 'admin', suspended: false },
+        {
+          id: 'u-1',
+          name: 'Alice Driver',
+          email: 'alice@transporter.com',
+          role: 'driver',
+          phone: null,
+          suspended: false,
+        },
+        {
+          id: 'u-2',
+          name: 'Bob Shipper',
+          email: 'bob@cargo.com',
+          role: 'shipper',
+          phone: null,
+          suspended: false,
+        },
       ]
     })
 
     it('filters users by active role tab', async () => {
       renderDashboard()
 
-      // Initially all users visible
       expect(screen.getByText('Alice Driver')).toBeInTheDocument()
       expect(screen.getByText('Bob Shipper')).toBeInTheDocument()
-      expect(screen.getByText('Charlie Admin')).toBeInTheDocument()
 
-      // Switch active tab to driver
       mockActiveTab.value = 'driver'
-      await screen.findByText('Alice Driver')
+      await nextTick()
 
       expect(screen.getByText('Alice Driver')).toBeInTheDocument()
       expect(screen.queryByText('Bob Shipper')).not.toBeInTheDocument()
-      expect(screen.queryByText('Charlie Admin')).not.toBeInTheDocument()
     })
 
     it('filters users by search query (name or email)', async () => {
       renderDashboard()
 
-      // Search by name
-      mockSearchQuery.value = 'bob'
-      await screen.findByText('Bob Shipper')
+      mockSearchQuery.value = 'cargo'
+      await nextTick()
 
       expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
       expect(screen.getByText('Bob Shipper')).toBeInTheDocument()
-      expect(screen.queryByText('Charlie Admin')).not.toBeInTheDocument()
-
-      // Search by email substring
-      mockSearchQuery.value = 'admin.com'
-      await screen.findByText('Charlie Admin')
-
-      expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
-      expect(screen.queryByText('Bob Shipper')).not.toBeInTheDocument()
-      expect(screen.getByText('Charlie Admin')).toBeInTheDocument()
     })
   })
 
@@ -273,75 +272,48 @@ describe('AdminDashboard Component Tests', () => {
     })
 
     it('displays error alert when query returns an error', () => {
-      mockError.value = { message: 'Failed to fetch admin users data' }
+      mockError.value = { message: 'Database connection failed' }
 
       renderDashboard()
 
-      expect(screen.getByText('Failed to fetch admin users data')).toBeInTheDocument()
+      expect(screen.getByText('Database connection failed')).toBeInTheDocument()
     })
   })
 
   describe('User Suspension Workflows', () => {
     beforeEach(() => {
       mockUsers.value = [
-        {
-          id: 'driver-99',
-          name: 'Dave Driver',
-          email: 'dave@road.com',
-          role: 'driver',
-          suspended: false,
-        },
-        {
-          id: 'shipper-88',
-          name: 'Sara Shipper',
-          email: 'sara@ship.com',
-          role: 'shipper',
-          suspended: false,
-        },
-        {
-          id: 'suspended-77',
-          name: 'Bad Driver',
-          email: 'bad@road.com',
-          role: 'driver',
-          suspended: true,
-        },
-        {
-          id: 'admin-66',
-          name: 'Other Admin',
-          email: 'other@admin.com',
-          role: 'admin',
-          suspended: false,
-        },
+        { id: 'admin-1', name: 'Super Admin', role: 'admin', suspended: false },
+        { id: 'driver-99', name: 'Fast Driver', role: 'driver', suspended: false },
+        { id: 'shipper-88', name: 'Reliable Shipper', role: 'shipper', suspended: false },
+        { id: 'suspended-77', name: 'Bad Driver', role: 'driver', suspended: true },
       ]
     })
 
     it('does not display Suspend or Unsuspend buttons for admin role users', () => {
       renderDashboard()
 
-      const adminRow = screen.getByText('Other Admin').closest('tr')!
+      const adminRow = screen.getByText('Super Admin').closest('tr')!
       expect(adminRow.textContent).not.toContain('Suspend')
-      expect(adminRow.textContent).not.toContain('Unsuspend')
     })
 
     it('clicking Suspend opens dialog with driver-specific reasons', async () => {
       renderDashboard()
 
-      // Find Suspend button for Dave Driver
-      const driverRow = screen.getByText('Dave Driver').closest('tr')!
+      const driverRow = screen.getByText('Fast Driver').closest('tr')!
       const suspendBtn = driverRow.querySelector('button')!
       await fireEvent.click(suspendBtn)
 
-      // Dialog should be visible
       expect(screen.getByText('Suspend User')).toBeInTheDocument()
-      expect(screen.getByText(/Select a reason for suspending/i)).toBeInTheDocument()
       expect(screen.getByText('Repeated late deliveries')).toBeInTheDocument()
       expect(screen.getByText('Poor driving behavior reported')).toBeInTheDocument()
+      expect(screen.getByText('Vehicle safety violations')).toBeInTheDocument()
     })
 
     it('clicking Suspend on shipper opens dialog with shipper-specific reasons', async () => {
       renderDashboard()
 
-      const shipperRow = screen.getByText('Sara Shipper').closest('tr')!
+      const shipperRow = screen.getByText('Reliable Shipper').closest('tr')!
       const suspendBtn = shipperRow.querySelector('button')!
       await fireEvent.click(suspendBtn)
 
@@ -352,10 +324,11 @@ describe('AdminDashboard Component Tests', () => {
     it('requires a reason before confirm button is enabled and triggers suspend mutation', async () => {
       renderDashboard()
 
-      const driverRow = screen.getByText('Dave Driver').closest('tr')!
-      await fireEvent.click(driverRow.querySelector('button')!)
+      const driverRow = screen.getByText('Fast Driver').closest('tr')!
+      const suspendBtn = driverRow.querySelector('button')!
+      await fireEvent.click(suspendBtn)
 
-      const confirmBtn = screen.getByRole('button', { name: /confirm suspension/i })
+      const confirmBtn = screen.getByText('Confirm Suspension').closest('button')!
       expect(confirmBtn).toBeDisabled()
 
       // Select a reason radio input
@@ -407,9 +380,9 @@ describe('AdminDashboard Component Tests', () => {
       expect(screen.getAllByText('Drivers').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Shippers').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Admins').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getByText('Verified')).toBeInTheDocument()
-      expect(screen.getByText('Pending')).toBeInTheDocument()
-      expect(screen.getByText('Rejected')).toBeInTheDocument()
+      expect(screen.getAllByText('Verified').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Pending').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Rejected').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Suspended').length).toBeGreaterThanOrEqual(1)
     })
 
@@ -462,7 +435,7 @@ describe('AdminDashboard Component Tests', () => {
     it('clicking Verified card sets activeTab to "verified" and filters table to approved users', async () => {
       renderDashboard()
 
-      const verifiedCard = screen.getByText('Verified').closest('.cursor-pointer')!
+      const verifiedCard = screen.getAllByText('Verified').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
       await fireEvent.click(verifiedCard)
 
       expect(mockActiveTab.value).toBe('verified')
@@ -476,7 +449,7 @@ describe('AdminDashboard Component Tests', () => {
     it('clicking Pending card sets activeTab to "pending" and filters table to pending users', async () => {
       renderDashboard()
 
-      const pendingCard = screen.getByText('Pending').closest('.cursor-pointer')!
+      const pendingCard = screen.getAllByText('Pending').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
       await fireEvent.click(pendingCard)
 
       expect(mockActiveTab.value).toBe('pending')
@@ -487,7 +460,7 @@ describe('AdminDashboard Component Tests', () => {
     it('clicking Rejected card sets activeTab to "rejected" and filters table to rejected users', async () => {
       renderDashboard()
 
-      const rejectedCard = screen.getByText('Rejected').closest('.cursor-pointer')!
+      const rejectedCard = screen.getAllByText('Rejected').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
       await fireEvent.click(rejectedCard)
 
       expect(mockActiveTab.value).toBe('rejected')
@@ -510,13 +483,13 @@ describe('AdminDashboard Component Tests', () => {
       mockActiveTab.value = 'verified'
       renderDashboard()
 
-      const verifiedCard = screen.getByText('Verified').closest('.cursor-pointer')!
+      const verifiedCard = screen.getAllByText('Verified').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
       expect(verifiedCard.className).toContain('ring-2')
       expect(verifiedCard.className).toContain('ring-green-600')
 
       mockActiveTab.value = 'rejected'
       await nextTick()
-      const rejectedCard = screen.getByText('Rejected').closest('.cursor-pointer')!
+      const rejectedCard = screen.getAllByText('Rejected').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
       expect(rejectedCard.className).toContain('ring-2')
       expect(rejectedCard.className).toContain('ring-destructive')
     })

@@ -1,6 +1,8 @@
 import os
 import random
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -37,7 +39,42 @@ class UpdateTicketStatusRequest(BaseModel):
     priority: Optional[str] = None
 
 
-def ticket_to_dict(t, user_map=None) -> dict:
+class CreateTicketReplyRequest(BaseModel):
+    message: str
+    sender_name: Optional[str] = None
+
+
+async def ensure_ticket_replies_table():
+    try:
+        await db.query_raw("""
+            CREATE TABLE IF NOT EXISTS ticket_replies (
+                id TEXT PRIMARY KEY,
+                ticket_id TEXT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+                sender_name TEXT NOT NULL,
+                sender_role TEXT NOT NULL,
+                sender_type TEXT NOT NULL DEFAULT 'agent',
+                message TEXT NOT NULL,
+                created_at TIMESTAMP(3) WITH TIME ZONE NOT NULL DEFAULT NOW()
+            );
+        """)
+        await db.query_raw("ALTER TABLE ticket_replies ADD COLUMN IF NOT EXISTS sender_type TEXT NOT NULL DEFAULT 'agent';")
+    except Exception:
+        pass
+
+
+async def fetch_ticket_replies(ticket_id: str) -> list:
+    await ensure_ticket_replies_table()
+    try:
+        replies = await db.query_raw(
+            'SELECT id, ticket_id as "ticketId", sender_name as "senderName", sender_role as "senderRole", sender_type as "senderType", message, created_at as "createdAt" FROM ticket_replies WHERE ticket_id = $1 ORDER BY created_at ASC',
+            ticket_id,
+        )
+        return replies or []
+    except Exception:
+        return []
+
+
+def ticket_to_dict(t, user_map=None, replies=None) -> dict:
     user_info = None
     if t.userId and user_map and t.userId in user_map:
         u = user_map[t.userId]
@@ -49,6 +86,23 @@ def ticket_to_dict(t, user_map=None) -> dict:
             "role": role_val,
             "phone": u.phone,
         }
+
+    formatted_replies = []
+    if replies:
+        for r in replies:
+            get_val = lambda obj, k, default=None: obj.get(k, default) if isinstance(obj, dict) else getattr(obj, k, default)
+            created_dt = get_val(r, "createdAt") or get_val(r, "created_at")
+            role_val = get_val(r, "senderRole") or get_val(r, "sender_role")
+            type_val = get_val(r, "senderType") or get_val(r, "sender_type") or ("agent" if role_val == "admin" else "customer")
+            formatted_replies.append({
+                "id": get_val(r, "id"),
+                "ticket_id": get_val(r, "ticketId") or get_val(r, "ticket_id"),
+                "sender_name": get_val(r, "senderName") or get_val(r, "sender_name"),
+                "sender_role": role_val,
+                "sender_type": type_val,
+                "message": get_val(r, "message"),
+                "created_at": (created_dt if isinstance(created_dt, str) else created_dt.isoformat()) if created_dt else None,
+            })
 
     return {
         "id": t.id,
@@ -64,6 +118,7 @@ def ticket_to_dict(t, user_map=None) -> dict:
         "user_id": t.userId,
         "user": user_info,
         "admin_notes": t.adminNotes,
+        "replies": formatted_replies,
         "created_at": (t.createdAt if isinstance(t.createdAt, str) else t.createdAt.isoformat()) if t.createdAt else None,
         "updated_at": (t.updatedAt if isinstance(t.updatedAt, str) else t.updatedAt.isoformat()) if t.updatedAt else None,
     }
@@ -339,12 +394,27 @@ async def get_my_tickets(
 
     db_user = await db.user.find_unique(where={"id": user["id"]})
     user_map = {user["id"]: db_user} if db_user else {}
-    return [ticket_to_dict(t, user_map) for t in my_tickets]
+
+    await ensure_ticket_replies_table()
+    try:
+        all_replies = await db.query_raw('SELECT id, ticket_id as "ticketId", sender_name as "senderName", sender_role as "senderRole", sender_type as "senderType", message, created_at as "createdAt" FROM ticket_replies ORDER BY created_at ASC')
+    except Exception:
+        all_replies = []
+    reply_map = {}
+    if all_replies:
+        for r in all_replies:
+            tid = r.get("ticketId") or r.get("ticket_id")
+            if tid not in reply_map:
+                reply_map[tid] = []
+            reply_map[tid].append(r)
+
+    return [ticket_to_dict(t, user_map, reply_map.get(t.id)) for t in my_tickets]
 
 
 @router.get("/admin/list")
 async def admin_list_tickets(
     status: Optional[str] = None,
+    priority: Optional[str] = None,
     source: Optional[str] = None,
     search: Optional[str] = None,
     sort_by: Optional[str] = "newest",
@@ -353,18 +423,18 @@ async def admin_list_tickets(
     admin: dict = Depends(get_admin_user),
 ):
     """
-    Admin endpoint to list all support tickets with filtering and search.
+    Admin endpoint to list all support tickets across all users and sources.
     """
-    where = {}
-    if status and status in ("open", "in_progress", "resolved", "closed"):
-        where["status"] = status
-    if source and source in ("email", "web", "profile_edit"):
-        where["source"] = source
+    tickets = await db.support_tickets.find_many()
 
-    tickets = await db.support_tickets.find_many(
-        where=where,
-        order={"createdAt": "desc"},
-    )
+    if status and status in ("open", "in_progress", "resolved", "closed"):
+        tickets = [t for t in tickets if t.status == status]
+
+    if priority and priority in ("low", "normal", "high", "urgent"):
+        tickets = [t for t in tickets if t.priority == priority]
+
+    if source and source in ("email", "web", "profile_edit"):
+        tickets = [t for t in tickets if t.source == source]
 
     if search:
         search_lower = search.lower()
@@ -382,7 +452,20 @@ async def admin_list_tickets(
     users = await db.user.find_many()
     user_map = {u.id: u for u in users}
 
-    return [ticket_to_dict(t, user_map) for t in tickets]
+    await ensure_ticket_replies_table()
+    try:
+        all_replies = await db.query_raw('SELECT id, ticket_id as "ticketId", sender_name as "senderName", sender_role as "senderRole", sender_type as "senderType", message, created_at as "createdAt" FROM ticket_replies ORDER BY created_at ASC')
+    except Exception:
+        all_replies = []
+    reply_map = {}
+    if all_replies:
+        for r in all_replies:
+            tid = r.get("ticketId") or r.get("ticket_id")
+            if tid not in reply_map:
+                reply_map[tid] = []
+            reply_map[tid].append(r)
+
+    return [ticket_to_dict(t, user_map, reply_map.get(t.id)) for t in tickets]
 
 
 @router.get("/admin/count")
@@ -411,11 +494,15 @@ async def admin_get_ticket(
     Admin endpoint to get a single ticket by ID or Ticket Number.
     """
     clean_id = ticket_id.strip()
+    clean_id_no_hash = clean_id.lstrip("#")
     ticket = await db.support_tickets.find_first(
         where={
             "OR": [
                 {"id": clean_id},
                 {"ticketNumber": clean_id},
+                {"id": clean_id_no_hash},
+                {"ticketNumber": clean_id_no_hash},
+                {"ticketNumber": f"#{clean_id_no_hash}"},
             ]
         }
     )
@@ -428,7 +515,8 @@ async def admin_get_ticket(
         if user:
             user_map[user.id] = user
 
-    return ticket_to_dict(ticket, user_map)
+    replies = await fetch_ticket_replies(ticket.id)
+    return ticket_to_dict(ticket, user_map, replies)
 
 
 @router.put("/admin/{ticket_id}/status")
@@ -441,11 +529,15 @@ async def admin_update_ticket_status(
     Admin endpoint to update ticket status, priority, and notes.
     """
     clean_id = ticket_id.strip()
+    clean_id_no_hash = clean_id.lstrip("#")
     ticket = await db.support_tickets.find_first(
         where={
             "OR": [
                 {"id": clean_id},
                 {"ticketNumber": clean_id},
+                {"id": clean_id_no_hash},
+                {"ticketNumber": clean_id_no_hash},
+                {"ticketNumber": f"#{clean_id_no_hash}"},
             ]
         }
     )
@@ -462,17 +554,142 @@ async def admin_update_ticket_status(
     if req.priority is not None:
         data_to_update["priority"] = req.priority
 
+    users = await db.user.find_many()
+    user_map = {u.id: u for u in users}
+    replies = await fetch_ticket_replies(ticket.id)
+
     if not data_to_update:
-        users = await db.user.find_many()
-        user_map = {u.id: u for u in users}
-        return ticket_to_dict(ticket, user_map)
+        return ticket_to_dict(ticket, user_map, replies)
 
     updated_ticket = await db.support_tickets.update(
         where={"id": ticket.id},
         data=data_to_update,
     )
+    return ticket_to_dict(updated_ticket, user_map, replies)
+
+
+@router.post("/admin/{ticket_id}/replies")
+async def admin_create_ticket_reply(
+    ticket_id: str,
+    req: CreateTicketReplyRequest,
+    admin: dict = Depends(get_admin_user),
+):
+    """
+    Admin endpoint to submit a reply to a support ticket.
+    """
+    await ensure_ticket_replies_table()
+    clean_id = ticket_id.strip()
+    clean_id_no_hash = clean_id.lstrip("#")
+    ticket = await db.support_tickets.find_first(
+        where={
+            "OR": [
+                {"id": clean_id},
+                {"ticketNumber": clean_id},
+                {"id": clean_id_no_hash},
+                {"ticketNumber": clean_id_no_hash},
+                {"ticketNumber": f"#{clean_id_no_hash}"},
+            ]
+        }
+    )
+    if not ticket:
+        raise HTTPException(status_code=404, detail=f"Ticket not found ({clean_id})")
+
+    if not req.message or not req.message.strip():
+        raise HTTPException(status_code=400, detail="Reply message cannot be empty")
+
+    sender_name = req.sender_name or admin.get("name") or "Support Team"
+    reply_id = str(uuid.uuid4())
+
+    await db.query_raw(
+        'INSERT INTO ticket_replies (id, ticket_id, sender_name, sender_role, sender_type, message, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW())',
+        reply_id,
+        ticket.id,
+        sender_name,
+        "admin",
+        "agent",
+        req.message.strip(),
+    )
+
+    if ticket.status == "open":
+        await db.support_tickets.update(
+            where={"id": ticket.id}, data={"status": "in_progress"}
+        )
 
     users = await db.user.find_many()
     user_map = {u.id: u for u in users}
-    return ticket_to_dict(updated_ticket, user_map)
+    replies = await fetch_ticket_replies(ticket.id)
+    updated_ticket = await db.support_tickets.find_unique(where={"id": ticket.id})
+    return ticket_to_dict(updated_ticket or ticket, user_map, replies)
+
+
+@router.get("/tickets/{ticket_id}")
+async def user_get_ticket(
+    ticket_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    clean_id = ticket_id.strip()
+    clean_id_no_hash = clean_id.lstrip("#")
+    ticket = await db.support_tickets.find_first(
+        where={
+            "OR": [
+                {"id": clean_id},
+                {"ticketNumber": clean_id},
+                {"id": clean_id_no_hash},
+                {"ticketNumber": clean_id_no_hash},
+                {"ticketNumber": f"#{clean_id_no_hash}"},
+            ]
+        }
+    )
+    if not ticket or ticket.userId != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    users = await db.user.find_many()
+    user_map = {u.id: u for u in users}
+    replies = await fetch_ticket_replies(ticket.id)
+    return ticket_to_dict(ticket, user_map, replies)
+
+
+@router.post("/tickets/{ticket_id}/replies")
+async def user_create_ticket_reply(
+    ticket_id: str,
+    req: CreateTicketReplyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    await ensure_ticket_replies_table()
+    clean_id = ticket_id.strip()
+    clean_id_no_hash = clean_id.lstrip("#")
+    ticket = await db.support_tickets.find_first(
+        where={
+            "OR": [
+                {"id": clean_id},
+                {"ticketNumber": clean_id},
+                {"id": clean_id_no_hash},
+                {"ticketNumber": clean_id_no_hash},
+                {"ticketNumber": f"#{clean_id_no_hash}"},
+            ]
+        }
+    )
+    if not ticket or ticket.userId != current_user["id"]:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if not req.message or not req.message.strip():
+        raise HTTPException(status_code=400, detail="Reply message cannot be empty")
+
+    sender_name = current_user.get("name") or ticket.senderName or "User"
+    reply_id = str(uuid.uuid4())
+
+    await db.query_raw(
+        'INSERT INTO ticket_replies (id, ticket_id, sender_name, sender_role, sender_type, message, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW())',
+        reply_id,
+        ticket.id,
+        sender_name,
+        "user",
+        "customer",
+        req.message.strip(),
+    )
+
+    users = await db.user.find_many()
+    user_map = {u.id: u for u in users}
+    replies = await fetch_ticket_replies(ticket.id)
+    return ticket_to_dict(ticket, user_map, replies)
 

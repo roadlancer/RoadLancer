@@ -95,22 +95,24 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 5.5 | Forced Price Protection (Admin-only visibility) | ✅ Complete |
 | Phase 5.6 | Helpdesk & Support Desk UI Standardization, Ticket Sorting (`sort_by`), Auth-restricted triggers | ✅ Complete |
 | Phase 5.7 | Support Desk Enhancements: TanStack Table Sorting & Pagination, Interactive Inline Agent Assignment (`[ASSIGNED_TO]`), Agent Filtering, & Dedicated Ticket Detail Page (`/admin/support/:id`) | ✅ Complete |
+| Phase 5.8 | Table Customization & Verification Safeguards: Max 8 Columns Checkbox Chooser, Inline Status/Category Selects, & Approved Verification Reset Lock (`[ASSIGNED_TO]` & AI score data integrity) | ✅ Complete |
+| Phase 5.9 | Support Desk Reply Threading: Dedicated ticket_replies Model (`senderRole` & `senderType` for `agent`/`customer` distinction), Auto-creation via Raw SQL (`ALTER TABLE`), Admin & User Reply Endpoints (`POST /replies`), and Interactive Discussion & Reply Form (`AdminTicketDetailView.vue`) | ✅ Complete |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
-### Overall Completion: **~94%**
+### Overall Completion: **~95%**
 
 | Area | Completion | Notes |
 |------|------------|-------|
 | Auth System | 100% | Better Auth, login, sessions, role-based access, authenticated support trigger |
-| Backend Routes | 95% | 35+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET) |
+| Backend Routes | 95% | 35+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET) |
 | AI Pricing Engine | 100% | Rule-based with all factors |
 | Database Schema | 100% | 9 models implemented |
-| Frontend Views | 95% | 14 views (all dashboards, login, register, home, shipment detail, verification, admin support desk with agent filtering, admin ticket detail view with assign-to-me) |
+| Frontend Views | 95% | 14 views (all dashboards, login, register, home, shipment detail, verification with AI checked status lock, admin support desk with agent filtering, admin ticket detail view with assign-to-me) |
 | Frontend Composables | 100% | 13 composables including `useSupportAgents()` for unified agent management |
-| Frontend Components | 100% | 10 components (`UsersTable`, `TicketsTable` with `@tanstack/vue-table` sorting, pagination, and direct inline agent assignment dropdowns) |
+| Frontend Components | 100% | 10 components (`UsersTable`, `TicketsTable` with `@tanstack/vue-table` sorting, pagination, Max 8 column visibility popover, and direct inline status/category/agent selects) |
 | Shipment Flow | 100% | Create → Price → Bidding → Transit |
-| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI & dedicated resolution page |
-| Testing | 90% | Component tests (primary) + E2E tests (critical paths only) |
+| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI & dedicated resolution page |
+| Testing | 96% | Component tests (primary tool: AdminDashboard, TicketsTable inline assignment, and 4 dedicated TicketDetail/Reply component suites) + Full-Stack E2E tests (critical integration paths including `ticket-detail-page.spec.ts`) |
 
 ### What's Missing
 
@@ -125,48 +127,42 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 
 ### Testing Strategy
 
-> **Going forward:** Rely mostly on **component tests** (Vitest + Testing Library). Use **E2E tests** (Playwright) only when necessary.
+> **Core Testing Rule (Strictly Enforced):** Rely mostly on **component unit tests** (`vitest` + `@testing-library/vue`). **Remove/avoid any E2E tests that are already covered by unit tests.** Keep only those E2E tests (`playwright`) that are absolutely necessary to test full-stack functionality (such as cross-page routing, real API persistence, and browser session state) that cannot be tested with unit tests.
 
-#### When to Use Component Tests (Preferred)
-- Testing individual Vue components in isolation
-- Verifying UI renders correctly with different props/state
-- Testing user interactions (clicks, form inputs, navigation)
-- Mocking composables, router, and external dependencies
-- Testing business logic in composables and utilities
-- Fast feedback loop (runs in seconds)
+#### When to Use Component Tests (Primary Tool)
+- Testing individual Vue components in isolation (`TicketDetail`, `UpdateTicket`, `ReplyThread`, `ReplyForm`, `TicketsTable`)
+- Verifying UI renders correctly with different props, badges, and state
+- Testing user interactions (clicks, form validation, inline selects, input fields)
+- Mocking composables (`useAuth`, `useAdminTickets`), router, and external dependencies
+- Fast feedback loop (runs in seconds on every code change)
 
-#### When to Use E2E Tests (Only When Necessary)
-- Testing complete user flows across multiple pages (login → dashboard → create shipment)
-- Testing real API integration without mocks
-- Testing browser-specific behavior (cookies, localStorage, redirects)
-- Regression testing for critical paths (auth, shipment lifecycle)
-- Verifying actual database state changes
+#### When to Use E2E Tests (Strictly Necessary Full-Stack Only)
+- Testing complete multi-page navigation and URL route transitions (`/admin/support` $\to$ `/admin/support/:id`)
+- Testing real API integration & database persistence across views without mocks (e.g., verifying that a status update or new reply saved on the details page permanently persists when returning to the main table or reloading)
+- Testing browser cookie session verification and HTTP redirect flow
 
 #### Test Coverage Priorities
-1. **High priority (component tests):** Login, dashboards, shipment creation, bidding, verification forms
-2. **Medium priority (component tests):** Admin user management, support tickets, price estimation
-3. **Low priority (E2E only):** Full shipment lifecycle flow, multi-role interactions
+1. **High priority (component tests):** Login, dashboards, shipment creation, bidding, verification forms, support ticket detail components (`TicketDetail`, `UpdateTicket`, `ReplyThread`, `ReplyForm`)
+2. **Medium priority (component tests):** Admin user management, support tickets table, price estimation dialogs
+3. **Low priority (full-stack E2E only):** Multi-page route transitions (`ticket-detail-page.spec.ts`), real DB state persistence across page reloads
 
 ### E2E Test Status
-- **Total tests:** 52
-- **Passing:** 52
-- **Flaky:** 0
-- **Scope:** Critical user flows only (login, role validation, session management, admin dashboard, verification, support webhook)
-- **Usage:** Run before demos/presentations; not for every code change
+- **Framework:** Playwright (Chromium headless/headed with `roadlancer_test` PostgreSQL db)
+- **Scope:** Critical full-stack integration flows only (login, role validation, session management, admin verification, support webhook creation, `ticket-detail-page.spec.ts` standalone navigation & persistence across routes)
+- **Rule:** No redundant UI/prop testing in E2E; exclusively full-stack integration.
 
 ### Component Test Status
 - **Framework:** Vitest + @testing-library/vue + jsdom
 - **Test runner:** `vitest run` (single run) or `vitest` (watch mode)
 - **Location:** `frontend/src/views/__tests__/*.spec.ts` and `frontend/src/**/*.spec.ts`
-- **Current tests:** AdminDashboard (28 tests)
+- **Current suites:** AdminDashboard (28 tests), TicketsTable & inline assignment, TicketDetail, UpdateTicket, ReplyThread, ReplyForm (100% passing across 70+ tests)
 - **Test setup:** `frontend/vitest.config.ts` (jsdom environment)
-- **Usage:** Run on every code change; fast feedback loop
 
 ---
 
 ## 🧪 12. Component/Unit Testing Guide
 
-> **Strategy:** Component tests are our primary testing tool. Use E2E tests only for critical user flows that span multiple pages.
+> **Strategy:** Component tests are our primary testing tool. Use E2E tests ONLY for critical user flows and real backend persistence that cannot be tested with unit tests.
 
 ### Why Component Tests First?
 - **Fast:** Runs in seconds, not minutes
@@ -874,6 +870,8 @@ export function useVerificationStatus() {
 - **`AdminTicketDetailView` Fallback Fetching:** The query `useAdminTicket(ticketId)` calls `GET /api/support/admin/{ticket_id}` to retrieve individual ticket details. If the backend instance has not been reloaded or returns an error, the query gracefully catches the exception and falls back to searching `GET /api/support/admin/list` (`SupportTicket[]`) by `id` or `ticket_number`, ensuring zero downtime or broken views during active development.
 - **Assigned Agent Metadata inside `admin_notes`:** To track assigned support agents (`agentId`, `agentName`) without requiring breaking schema migrations on the `support_tickets` table, `parseAssignedAgent` and `formatAssignedAgentNotes` (`useSupportTickets.ts`) store assigned agent information directly inside the `adminNotes` text column using the structured prefix tag `[ASSIGNED_TO:id|name]\n<clean_notes>`.
 - **`@tanstack/vue-table` Column Sorting Synchronization:** In `TicketsTable.vue`, column sorting state (`SortingState`) is bound via `v-model:sorting` to `AdminSupportDesk.vue`, which watches changes and updates `sortField` and `sortOrder` in `useAdminTickets()`. The backend `sort_tickets_list()` utility checks `sort_field` first (supporting sorting across `ticket_number`, `sender_email`, `subject`, `source`, weighted `priority`, weighted `status`, and `created_at`), overriding legacy `sort_by` options when active.
+- **Support Table Column Customization & Layout Stability (`Max 8 Columns` Limit):** As more interactive elements (category selects, status dropdowns, priority rankings, assigned agent dropdowns) are added to TanStack tables (`TicketsTable.vue`), displaying too many columns simultaneously causes horizontal squishing and layout disruption. To maintain visual balance without removing required data, `TicketsTable.vue` implements an interactive **Column Visibility Chooser (`columnVisibility` state)** with checkboxes and an enforced **Maximum 8 Columns limit (`visibleColumnCount <= 8`)**. By default, secondary fields like `Created At` are hidden to preserve clean 8-column layout integrity.
+- **Approved Verification Reset Safeguards:** When a driver or shipper application is approved by an admin, their document credentials have already undergone automated AI score checking and human verification. To prevent accidental resets or disrupting verified user accounts, the *"Reset to Pending"* action (`POST /verification/admin/{id}/reset-pending`) explicitly blocks resetting `approved` verifications (`HTTP 400`). Furthermore, bulk admin reset endpoints (`POST /verification/admin/reset-all-pending`) explicitly filter by `where={"status": "rejected"}`, ensuring that global testing/reset utilities only target rejected applications.
 
 ---
 
@@ -915,7 +913,8 @@ export function useVerificationStatus() {
 | `frontend/src/components/NavBar.vue` | Sticky nav — RoadLancer brand only when logged out, Help & Support trigger restricted strictly to authenticated users |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
 | `frontend/src/components/UsersTable.vue` | Extracted admin user management table component with role/status badges and suspend actions |
-| `frontend/src/components/TicketsTable.vue` | `@tanstack/vue-table` support ticket & inbound email table matching UsersTable design with clickable headers for sorting, status/priority/assigned badges, pagination controls, and row click navigation to `/admin/support/:id` |
+| `frontend/src/components/TicketsTable.vue` | `@tanstack/vue-table` support ticket & inbound email table matching UsersTable design with clickable headers for sorting, Max 8 Column Visibility Chooser (`columnVisibility` popover), interactive inline status/category/agent selects, pagination controls, and row click navigation to `/admin/support/:id` |
+| `frontend/src/components/VerificationDetailDialog.vue` | Detailed dossier inspection modal displaying user profile fields, attached document images (Aadhaar, DL, RC, Insurance, GST, PAN), status badges, and action controls with approved verification reset lock |
 | `frontend/src/components/FileUpload.vue` | Reusable image upload component for Base64 document attachments with thumbnail preview & validation |
 | `frontend/src/components/CreateShipmentDialog.vue` | Shipment creation form with all fields (title, goods, weight, pickup/dropoff, vehicle) |
 | `frontend/src/components/PriceConfirmDialog.vue` | Price confirmation pop-up — AI suggested range, custom price input, forced price warning |
@@ -934,7 +933,7 @@ export function useVerificationStatus() {
 | `frontend/src/views/AdminTicketDetailView.vue` | Dedicated ticket inspection & resolution page (`/admin/support/:id`) displaying subject, linked profile verification, priority & status badges, assigned agent selection (`[ASSIGNED_TO:id|name]`), quick resolve button, and internal notes |
 | `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (28 tests) |
 | `frontend/src/views/__tests__/renderDashboard.ts` | Shared test helper — wraps render with common stubs |
-| `frontend/src/components/__tests__/TicketsTable.spec.ts` | TicketsTable & agent assignment unit test suite (table layout without sender column, inline agent select & assign events, row actions, and metadata parsing helpers) |
+| `frontend/src/components/__tests__/TicketsTable.spec.ts` | TicketsTable & column customization unit test suite (table layout without sender column, inline agent/status/category select events, and Suite 6 Max 8 Column Chooser checkbox UX assertions) |
 
 ---
 

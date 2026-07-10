@@ -4,6 +4,16 @@ import api from '@/lib/api'
 import { useAuth } from './useAuth'
 import { useAdminUsers } from './useAdminUsers'
 
+export interface SupportTicketReply {
+  id: string
+  ticket_id: string
+  sender_name: string
+  sender_role: 'admin' | 'user' | string
+  sender_type: 'agent' | 'customer' | string
+  message: string
+  created_at: string
+}
+
 export interface SupportTicket {
   id: string
   ticket_number: string
@@ -26,6 +36,7 @@ export interface SupportTicket {
   admin_notes: string | null
   created_at: string
   updated_at: string
+  replies?: SupportTicketReply[]
 }
 
 export interface AssignedAgentInfo {
@@ -287,15 +298,31 @@ export function useSupportMutations() {
     },
   })
 
+  const replyTicketMutation = useMutation({
+    mutationFn: async ({ ticketId, message }: { ticketId: string; message: string }) => {
+      const { data } = await api.post(`/support/tickets/${ticketId}/replies`, { message })
+      return data as SupportTicket
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['admin-support-ticket', variables.ticketId], data)
+      queryClient.invalidateQueries({ queryKey: ['my-support-tickets'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] })
+    },
+  })
+
   return {
     simulateEmail: simulateEmailMutation.mutateAsync,
     isSimulatingEmail: simulateEmailMutation.isPending,
     createTicket: createTicketMutation.mutateAsync,
     isCreatingTicket: createTicketMutation.isPending,
+    replyTicket: replyTicketMutation.mutateAsync,
+    isReplyingTicket: replyTicketMutation.isPending,
   }
 }
 
 export function useAdminTicket(ticketId: Ref<string>) {
+  const queryClient = useQueryClient()
+
   const query = useQuery({
     queryKey: computed(() => ['admin-support-ticket', ticketId.value]),
     queryFn: async () => {
@@ -318,11 +345,37 @@ export function useAdminTicket(ticketId: Ref<string>) {
     enabled: computed(() => !!ticketId.value),
   })
 
+  const submitReplyMutation = useMutation({
+    mutationFn: async ({ message, senderName }: { message: string; senderName?: string }) => {
+      const targetId = query.data.value?.id || ticketId.value
+      const { data } = await api.post(`/support/admin/${targetId}/replies`, {
+        message,
+        sender_name: senderName,
+      })
+      return data as SupportTicket
+    },
+    onSuccess: async (updatedTicket) => {
+      queryClient.setQueryData(['admin-support-ticket', ticketId.value], updatedTicket)
+      if (updatedTicket.id) {
+        queryClient.setQueryData(['admin-support-ticket', updatedTicket.id], updatedTicket)
+      }
+      if (updatedTicket.ticket_number) {
+        queryClient.setQueryData(['admin-support-ticket', updatedTicket.ticket_number], updatedTicket)
+      }
+      await query.refetch()
+      queryClient.invalidateQueries({ queryKey: ['admin-support-tickets'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-support-counts'] })
+      queryClient.invalidateQueries({ queryKey: ['my-support-tickets'] })
+    },
+  })
+
   return {
     ticket: query.data,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
     refetch: query.refetch,
+    submitReply: submitReplyMutation.mutateAsync,
+    isReplying: submitReplyMutation.isPending,
   }
 }

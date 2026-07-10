@@ -167,7 +167,7 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
       const firstSelect = selects[0]
 
       // Select Sarah Jenkins (Support Lead)
-      await fireEvent.change(firstSelect, { target: { value: 'admin-lead' } })
+      await fireEvent.update(firstSelect, 'admin-lead')
 
       expect(emitted().assign).toBeTruthy()
       expect(emitted().assign.length).toBe(1)
@@ -191,7 +191,7 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
       const selects = screen.getAllByLabelText('Change assigned agent')
       const secondSelect = selects[1] // Currently assigned to Vikram Mehta
 
-      await fireEvent.change(secondSelect, { target: { value: '' } })
+      await fireEvent.update(secondSelect, '')
 
       expect(emitted().assign).toBeTruthy()
       const payload = emitted().assign[0][0] as any
@@ -270,7 +270,7 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
       const statusSelects = screen.getAllByLabelText('Change status')
       expect(statusSelects.length).toBe(2)
 
-      await fireEvent.change(statusSelects[0], { target: { value: 'resolved' } })
+      await fireEvent.update(statusSelects[0], 'resolved')
 
       expect(emitted()['update-status']).toBeTruthy()
       expect(emitted()['update-status'].length).toBe(1)
@@ -290,7 +290,7 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
       const categorySelects = screen.getAllByLabelText('Change category')
       expect(categorySelects.length).toBe(2)
 
-      await fireEvent.change(categorySelects[1], { target: { value: 'technical' } })
+      await fireEvent.update(categorySelects[1], 'technical')
 
       expect(emitted()['update-category']).toBeTruthy()
       expect(emitted()['update-category'].length).toBe(1)
@@ -351,7 +351,7 @@ describe('TicketsTable & Agent Assignment Unit Tests', () => {
       await fireEvent.click(createdAtCheckbox!)
 
       expect(screen.getByText('8/8')).toBeInTheDocument()
-      expect(screen.getByText('Created At')).toBeInTheDocument()
+      expect(screen.getAllByText('Created At').find(el => el.closest('th'))).toBeDefined()
     })
   })
 })
