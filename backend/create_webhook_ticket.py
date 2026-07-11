@@ -7,11 +7,11 @@ def create_ticket():
     secret = os.getenv("SUPPORT_WEBHOOK_SECRET", "roadlancer-webhook-secret-2026")
     payload = {
         "secret": secret,
-        "from_email": "driver@roadlancer.com",
-        "from_name": "Dave Driver (Webhook Test)",
-        "subject": "[INBOUND WEBHOOK] Vehicle Registration RC Update Request",
-        "body": "Hello RoadLancer Support team,\n\nI have attached my new Vehicle Registration (RC Book) #KA-01-AB-1234. Please update and verify my driver profile credentials.\n\nThank you,\nDave Driver",
-        "priority": "high",
+        "from_email": "test-gibberish@roadlancer.com",
+        "from_name": "Test User (Keyboard Mash)",
+        "subject": "asdfghjkl qwertyuiop zxcvbnm 12345 florp blorp",
+        "body": "fdsajkl; fdsajkl; qwertyuiop mnbvcxz\n\nblerg blop glorp glip glap! 998877665544332211\n\nzzzzzzxxxxxxccccccvvvvvvbbbbbbnnnnnnmmmmmm qqqwwweeerrrtttyyyuuuiiiooopppaaasssdddfffggghhhjjjkkklll\n\ncan u fix??? asdf asdf asdf",
+        "priority": "normal",
         "source": "email"
     }
 

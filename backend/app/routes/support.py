@@ -1,7 +1,11 @@
 import os
 import random
 import time
+import traceback
 import uuid
+import asyncio
+import httpx
+import json
 from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -150,7 +154,6 @@ async def generate_unique_ticket_number() -> str:
             if not existing:
                 return ticket_num
         except Exception as e:
-            import traceback
             print(f"❌ [generate_unique_ticket_number] Error on {ticket_num}: {e}")
             traceback.print_exc()
             err_msg = str(e)
@@ -162,6 +165,94 @@ async def generate_unique_ticket_number() -> str:
             raise e
     # Fallback if 4 digits collide
     return f"TICK-{int(time.time()) % 100000}"
+
+
+async def classify_ticket_background(ticket_id: str, subject: str, message: str):
+    """
+    Non-blocking background task to automatically classify a ticket's category and priority
+    using Gemini (gemini-3.1-flash-lite with fallback to gemini-1.5-flash).
+    """
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_GENERATIVE_AI_API_KEY")
+        if not api_key:
+            print(f"⚠️ [classify_ticket_background] No GEMINI_API_KEY set. Skipping auto-classification for ticket {ticket_id}.")
+            return
+
+        prompt = f"""You are an AI classification engine for RoadLancer, an Indian logistics and transport marketplace platform.
+Analyze the following support ticket subject and message, and determine the exact category and priority level.
+
+SUBJECT: {subject}
+MESSAGE: {message}
+
+Choose exactly ONE category from:
+- "logistics_breakdown": Vehicle breakdown, SOS, reefer temperature alarms, accident reports, checkpost detention, e-way bill mismatch.
+- "billing_payment": Freight invoice delays, FASTag double deductions, fuel advances, wallet credits/debits, payment settlement.
+- "verification_kyc": Driver/shipper profile review, RC book, driving license, Aadhaar, GST certificate updates, status pending.
+- "shipment_tracking": GPS tracking loss, POD (Proof of Delivery) issues, return load queries, route diversion.
+- "account_access": Login issues, password reset, account settings, notification preferences.
+- "general": General feedback, feature inquiries, marketplace questions, referral bonuses, CSV export help.
+
+Choose exactly ONE priority from:
+- "urgent": Emergency breakdown on highway, temperature/vaccine spoilage risk, SOS alarm, active accident.
+- "high": Vehicle detained at border checkpost, payment settlement blocked, verification rejected blocking urgent dispatch.
+- "normal": Standard invoice inquiries, FASTag disputes, KYC review, general shipment tracking.
+- "low": General platform feedback, historical reports, referral queries, notification settings.
+
+Return strictly valid JSON with no markdown formatting or extra text:
+{{"category": "<category>", "priority": "<priority>", "reason": "<brief 1-sentence reason>"}}"""
+
+        models_to_try = ["gemini-3.1-flash-lite", "gemini-1.5-flash"]
+        result_json = None
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            for model_name in models_to_try:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                    payload = {
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {
+                            "temperature": 0.2,
+                            "maxOutputTokens": 200,
+                        }
+                    }
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        raw_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        clean_text = raw_text.strip().replace("```json", "").replace("```", "").strip()
+                        result_json = json.loads(clean_text)
+                        break
+                    else:
+                        print(f"⚠️ [classify_ticket_background] Model {model_name} returned status {resp.status_code}: {resp.text}")
+                except Exception as e:
+                    print(f"⚠️ [classify_ticket_background] Error calling {model_name}: {e}")
+
+        if result_json and "category" in result_json and "priority" in result_json:
+            category = str(result_json["category"]).strip().lower()
+            priority = str(result_json["priority"]).strip().lower()
+            reason = str(result_json.get("reason", "")).strip()
+
+            valid_categories = ["logistics_breakdown", "billing_payment", "verification_kyc", "shipment_tracking", "account_access", "general"]
+            valid_priorities = ["urgent", "high", "normal", "low"]
+
+            if category not in valid_categories:
+                category = "general"
+            if priority not in valid_priorities:
+                priority = "normal"
+
+            await db.support_tickets.update(
+                where={"id": ticket_id},
+                data={
+                    "category": category,
+                    "priority": priority,
+                }
+            )
+            print(f"✨ [classify_ticket_background] Successfully classified ticket {ticket_id} -> Category: '{category}', Priority: '{priority}' (Reason: {reason})")
+        else:
+            print(f"❌ [classify_ticket_background] Failed to classify ticket {ticket_id}: No valid JSON result obtained.")
+
+    except Exception as exc:
+        print(f"❌ [classify_ticket_background] Uncaught exception during classification for ticket {ticket_id}: {exc}")
 
 
 @router.post("/inbound-email")
@@ -222,9 +313,9 @@ async def simulate_inbound_email(
                     "status": "open",
                 }
             )
+            asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.body))
             break
         except Exception as e:
-            import traceback
             last_exc = e
             err_msg = str(e)
             # Fatal schema errors — don't retry
@@ -235,7 +326,6 @@ async def simulate_inbound_email(
                 )
             # Retry on transient Prisma engine errors (AttributeError from malformed error response)
             if isinstance(e, AttributeError) and _attempt < 2:
-                import asyncio
                 print(f"⚠️ [simulate_inbound_email] Transient Prisma error (attempt {_attempt + 1}/3): {e}")
                 await asyncio.sleep(0.5 * (_attempt + 1))
                 continue
@@ -279,10 +369,38 @@ async def create_web_ticket(
         }
     )
 
+    asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.message))
+
     # Fetch full user object for dict conversion
     db_user = await db.user.find_unique(where={"id": user["id"]})
     user_map = {user["id"]: db_user} if db_user else {}
     return ticket_to_dict(ticket, user_map)
+
+
+@router.post("/tickets/{ticket_id}/classify")
+async def trigger_ticket_classification(
+    ticket_id: str,
+    background: bool = True,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Trigger automatic AI ticket classification for an existing ticket using Gemini.
+    Runs in non-blocking background fashion by default.
+    """
+    ticket = await db.support_tickets.find_unique(where={"id": ticket_id})
+    if not ticket:
+        # Also try by ticketNumber
+        ticket = await db.support_tickets.find_unique(where={"ticketNumber": ticket_id})
+        if not ticket:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+
+    if background:
+        asyncio.create_task(classify_ticket_background(ticket.id, ticket.subject, ticket.message))
+        return {"success": True, "message": f"Non-blocking classification triggered for ticket #{ticket.ticketNumber}"}
+    else:
+        await classify_ticket_background(ticket.id, ticket.subject, ticket.message)
+        updated_ticket = await db.support_tickets.find_unique(where={"id": ticket.id})
+        return {"success": True, "ticket": ticket_to_dict(updated_ticket)}
 
 
 

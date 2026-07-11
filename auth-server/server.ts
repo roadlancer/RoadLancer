@@ -215,6 +215,102 @@ Output ONLY the markdown summary directly without extra chatter or intro text.`;
       }
     }
 
+    if (req.method === "POST" && pathname === "/api/auth/ai/classify") {
+      try {
+        const body = await req.json().catch(() => ({}));
+        const { subject = "", message = "", background = false } = body;
+        if (!subject.trim() && !message.trim()) {
+          return new Response(JSON.stringify({ error: "Subject or message is required" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const { generateText } = await import("ai");
+        const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "API key is missing on backend server", code: "API_KEY_MISSING" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const googleProvider = createGoogleGenerativeAI({ apiKey });
+        const prompt = `You are an AI classification engine for RoadLancer, an Indian logistics and transport marketplace platform.
+Analyze the following support ticket subject and message, and determine the exact category and priority level.
+
+SUBJECT: ${subject}
+MESSAGE: ${message}
+
+Choose exactly ONE category from:
+- "logistics_breakdown": Vehicle breakdown, SOS, reefer temperature alarms, accident reports, checkpost detention, e-way bill mismatch.
+- "billing_payment": Freight invoice delays, FASTag double deductions, fuel advances, wallet credits/debits, payment settlement.
+- "verification_kyc": Driver/shipper profile review, RC book, driving license, Aadhaar, GST certificate updates, status pending.
+- "shipment_tracking": GPS tracking loss, POD (Proof of Delivery) issues, return load queries, route diversion.
+- "account_access": Login issues, password reset, account settings, notification preferences.
+- "general": General feedback, feature inquiries, marketplace questions, referral bonuses, CSV export help.
+
+Choose exactly ONE priority from:
+- "urgent": Emergency breakdown on highway, temperature/vaccine spoilage risk, SOS alarm, active accident.
+- "high": Vehicle detained at border checkpost, payment settlement blocked, verification rejected blocking urgent dispatch.
+- "normal": Standard invoice inquiries, FASTag disputes, KYC review, general shipment tracking.
+- "low": General platform feedback, historical reports, referral queries, notification settings.
+
+Return strictly valid JSON with no markdown formatting or extra text:
+{"category": "<category>", "priority": "<priority>", "reason": "<brief 1-sentence reason>"}`;
+
+        const classifyWorker = async () => {
+          try {
+            let text = "";
+            try {
+              const res = await generateText({
+                model: googleProvider("gemini-3.1-flash-lite"),
+                maxTokens: 200,
+                temperature: 0.2,
+                maxRetries: 0,
+                prompt,
+              });
+              text = res.text;
+            } catch (firstErr: any) {
+              const res = await generateText({
+                model: googleProvider("gemini-1.5-flash"),
+                maxTokens: 200,
+                temperature: 0.2,
+                maxRetries: 0,
+                prompt,
+              });
+              text = res.text;
+            }
+            const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+            const parsed = JSON.parse(cleanText);
+            console.log("✨ [auth-server/classifyWorker] Classified ticket:", parsed);
+            return parsed;
+          } catch (e) {
+            console.error("❌ [auth-server/classifyWorker] Classification error:", e);
+            return { category: "general", priority: "normal", reason: "Classification failed or rate limited" };
+          }
+        };
+
+        if (background) {
+          setTimeout(() => { classifyWorker(); }, 0);
+          return new Response(JSON.stringify({ success: true, message: "Classification started in background" }), {
+            status: 202,
+            headers: { "Content-Type": "application/json" },
+          });
+        } else {
+          const result = await classifyWorker();
+          return new Response(JSON.stringify({ success: true, classification: result }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message || "Failed to classify ticket" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     return auth.handler(req);
   },
   port,
