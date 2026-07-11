@@ -102,23 +102,24 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 5.9 | Support Desk Reply Threading: Dedicated ticket_replies Model (`senderRole` & `senderType` for `agent`/`customer` distinction), Auto-creation via Raw SQL (`ALTER TABLE`), Admin & User Reply Endpoints (`POST /replies`), and Interactive Discussion & Reply Form (`AdminTicketDetailView.vue`) | ✅ Complete |
 | Phase 5.10 | Security Hardening: DOMPurify XSS sanitization (`@/lib/sanitize.ts`), Pydantic `Field(max_length=...)` on all request models, Prisma `@db.VarChar(...)` on `support_tickets` & `ticket_replies`, HTML `maxlength` + Zod `.max()` on frontend forms, `bodyHtml` column on `ticket_replies` | ✅ Complete |
 | Phase 5.11 | Agent Management: `isSupreme` flag on user model, create/deactivate/activate agent endpoints (supreme admin only), separate admin/agent login page (`/admin/login`), agent-scoped ticket filtering (non-supreme agents only see assigned tickets), Unverified stats card, status filter cards hidden for non-supreme agents | ✅ Complete |
+| Phase 5.12 | Agent UI Refinements: Agent filter dropdown hidden for sub-agents on support desk, per-row agent assignment column hidden for sub-agents, "Assigned Agent" column toggle hidden in column chooser for sub-agents, fixed deactivation bug (event handler passed userId string but treated as agent object) | ✅ Complete |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
-### Overall Completion: **~97%**
+### Overall Completion: **~98%**
 
 | Area | Completion | Notes |
 |------|------------|-------|
 | Auth System | 100% | Better Auth, login, sessions, role-based access, authenticated support trigger, separate admin/agent login page |
-| Backend Routes | 100% | 40+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate). All Pydantic request models enforce `max_length` constraints. |
+| Backend Routes | 100% | 40+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate with ticket unassignment). All Pydantic request models enforce `max_length` constraints. |
 | AI Pricing Engine | 100% | Rule-based with all factors |
 | Database Schema | 100% | 11 models implemented (incl. `support_tickets` with `VarChar` limits & `ticket_replies` with `bodyHtml`, `isSupreme` field on user model) |
 | Security | 100% | DOMPurify XSS sanitization on all user-supplied content, three-layer input length enforcement (Prisma VarChar → Pydantic max_length → HTML maxlength/Zod .max()) |
-| Frontend Views | 97% | 16 views (all dashboards, login (driver/shipper), admin/agent login (`/admin/login`), home, shipment detail, verification with AI checked status lock, admin support desk with agent filtering, admin ticket detail view with assign-to-me, agent management) |
-| Frontend Composables | 100% | 14 composables including `useSupportAgents()`, `useAdminAgents()` for unified agent management (real DB agents only, no dummy data) |
-| Frontend Components | 100% | 11 components (`UsersTable`, `AgentsTable`, `TicketsTable` with `@tanstack/vue-table` sorting, pagination, Max 8 column visibility popover, and direct inline status/category/agent selects) |
+| Frontend Views | 98% | 16 views (all dashboards, login (driver/shipper), admin/agent login (`/admin/login`), home, shipment detail, verification with AI checked status lock, admin support desk with agent filtering for supreme admins only, admin ticket detail view with assign-to-me, agent management with deactivation bug fix) |
+| Frontend Composables | 100% | 14 composables including `useSupportAgents()`, `useAdminAgents()` for unified agent management (real DB agents only, no dummy data, deactivation with ticket unassignment) |
+| Frontend Components | 100% | 11 components (`UsersTable`, `AgentsTable`, `TicketsTable` with `@tanstack/vue-table` sorting, pagination, Max 8 column visibility popover, and direct inline status/category/agent selects with sub-agent restrictions) |
 | Shipment Flow | 100% | Create → Price → Bidding → Transit |
-| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI & dedicated resolution page, agent-scoped ticket filtering |
-| Agent Management | 100% | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility, separate login page |
+| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI & dedicated resolution page, agent-scoped ticket filtering, sub-agent UI restrictions |
+| Agent Management | 100% | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility, separate login page, sub-agent UI restrictions, deactivation bug fix |
 | Testing | 97% | 72 component tests passing (AdminDashboard: 29 tests incl. unverified card & non-supreme visibility, TicketsTable: 14 tests, ReplyForm: 10 tests, TicketDetail, UpdateTicket, ReplyThread) |
 
 ### What's Missing
@@ -130,6 +131,13 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | **Phone Login** | LoginView has phone tab but backend only supports email | 🟢 Nice to have |
 | **Bidding Countdown** | `bidding_ends_at` field exists but no UI timer | 🟢 Nice to have |
 | **Sample Seed Data** | No sample shipments/bids for demo | 🟢 Nice to have |
+
+### Recently Fixed
+
+| Item | Fix |
+|------|-----|
+| **Agent deactivation not working** | Event handler bug: `openDeactivateDialog` received userId string but treated as agent object. Fixed to look up full agent object from list. |
+| **Sub-agent sees agent filter/assignment controls** | Hidden agent filter dropdown, per-row assignment column, and column toggle for non-supreme agents. |
 
 ### Testing Strategy
 
@@ -493,6 +501,7 @@ assigned → cancelled (only by shipper)
 - **`isSupreme` flag:** Boolean on user model — grants supreme admin privileges (agent management, status filter cards on dashboard). Set to `true` for `QzLwskaA83cgHMKnAZ45r1U76bYXZSLl` in DB.
 - **Agent management:** Supreme admins can create/deactivate/activate admin agents via `/admin/agents` page. Agents have `role: admin` but `isSupreme: false`.
 - **Agent-scoped tickets:** Non-supreme agents only see tickets assigned to them via `[ASSIGNED_TO:agentId|]` tag in `adminNotes`.
+- **Sub-agent UI restrictions:** Non-supreme agents do not see the agent filter dropdown, per-row agent assignment column, or "Assigned Agent" column toggle on the support desk. These controls are only visible to supreme admins.
 - **Separate login pages:** Regular login (`/login`) for Driver/Shipper; Admin/Agent login (`/admin/login`) for admin role.
 
 ### Frontend Auth Implementation
@@ -548,8 +557,8 @@ assigned → cancelled (only by shipper)
   - `POST /api/admin/users/{id}/unsuspend` — unsuspend a user
   - `POST /api/admin/users/{id}/approve` — approve a pending user
   - `POST /api/admin/users/{id}/reject` — reject a pending user (with reason)
-  - `POST /api/admin/users/{id}/deactivate-agent` — deactivate admin agent (supreme admin only, clears `[ASSIGNED_TO]` from tickets)
-  - `POST /api/admin/users/{id}/activate-agent` — activate admin agent (supreme admin only)
+  - `POST /api/admin/users/{id}/deactivate-agent` — deactivate admin agent (supreme admin only, sets `suspended: True`, deletes sessions, clears `[ASSIGNED_TO]` from all assigned tickets making them unassigned)
+  - `POST /api/admin/users/{id}/activate-agent` — activate admin agent (supreme admin only, sets `suspended: False`)
   - `POST /api/admin/users/create-agent` — create new admin agent account (supreme admin only, with scrypt password hashing)
 - **`/api/verification/*`** — Verification submit (driver/shipper), status, admin review
   - `GET /api/verification/status` — get current user's verification status
@@ -658,7 +667,7 @@ Total Price = (Distance × Rate/km) + Weight Charge + Vehicle Multiplier + Goods
 - **`useAdminUsers()`** — TanStack Query for admin user list + suspend mutation (shared by AdminDashboard)
 - **`usePendingUsers()`** — TanStack Query for pending users + approve/reject mutations (shared by PendingUsers)
 - **`useVerificationList()`** — TanStack Query for admin verification list + approve/reject mutations (shared by AdminVerificationReview)
-- **`useAdminAgents()`** — TanStack Query for admin agent list + create/deactivate/activate mutations (real DB agents only, no dummy data)
+- **`useAdminAgents()`** — TanStack Query for admin agent list + create/deactivate/activate mutations (real DB agents only, no dummy data, deactivation clears `[ASSIGNED_TO]` from tickets)
 - **`useShipments()`** — TanStack Query for shipment list (drivers see active, shippers see all their shipments)
 - **`useCreateShipment()`** — Mutation for creating new shipments
 - **`useShipmentDetail()`** — TanStack Query for single shipment details
@@ -795,7 +804,7 @@ export function useVerificationStatus() {
 | `/admin/profile` | AdminProfile | Admin only |
 | `/admin/pending` | PendingUsers | Admin only |
 | `/admin/verifications` | AdminVerificationReview | Admin only |
-| `/admin/support` | AdminSupportDesk | Admin only |
+| `/admin/support` | AdminSupportDesk | Admin only (agent filter & assignment controls visible to supreme admins only) |
 | `/admin/support/:id` | AdminTicketDetailView | Admin only |
 | `/admin/agents` | AdminAgentManagement | Supreme admin only |
 
@@ -880,6 +889,8 @@ export function useVerificationStatus() {
 - **No Direct Profile Edits for Admins:** For compliance and traceability, Admins should never arbitrarily edit verified driver or shipper profile data directly on the dashboard. Changes must strictly follow a user-initiated support ticket/email trail.
 - **Strict Soft Deletion / Suspension:** Never implement hard delete (`DELETE FROM ...`) endpoints for user accounts or verification records. Always use soft deletion (such as setting verification status to `rejected` or account status to `suspended`) to preserve audit trails, fraud logs, and historical traceability.
 - **Profile Edit Request Workflow:** When a verified driver or shipper needs to update their profile data, they must click "Request Profile Edit / Update" on their verification page and provide a support ticket reference / reason. This unlocks their form, submits an edit request (`isEditRequest: true`), sets their verification status back to `pending`, and flags the reason as `[PROFILE EDIT REQUEST]` for Admin review. When Admin approves, the user's main `user` table record (`name` and `phone`) is automatically synchronized.
+- **Agent Deactivation Event Handler Bug:** `AgentsTable.vue` emits `'deactivate'` with `row.original.id` (a string), but `AdminAgentManagement.vue`'s `openDeactivateDialog` treated the parameter as an agent object. Then `confirmDeactivate` tried `agentToDeactivate.value.id` which was `undefined` on a string, so the API was never called. Fixed by having `openDeactivateDialog` look up the full agent object from the agents list by userId.
+- **Sub-Agent UI Restrictions:** Non-supreme agents (sub-agents) should not see agent-related controls on the support desk. The agent filter dropdown, per-row agent assignment column, and "Assigned Agent" column toggle in the column chooser are all hidden for non-supreme users via `v-if="user?.isSupreme"` checks in `AdminSupportDesk.vue` and `TicketsTable.vue`.
 - **Shipment List Logic:** Backend `GET /api/shipments` returns ALL active shipments for drivers (not filtered by status). For shippers, it returns all their shipments (active, completed, cancelled) so they can see history.
 - **Status Update Validation:** Backend validates status transitions. Drivers can only update to: picked_up, in_transit, delivered. Shippers can only update to: completed, cancelled.
 - **AI Pricing is Rule-Based:** No LLM API calls — fast, free, deterministic. Diesel price fixed at ₹90/L. Tolls estimated at ₹2/km. Labour base ₹500-2000 by vehicle type.
@@ -943,7 +954,7 @@ export function useVerificationStatus() {
 | `frontend/src/components/NavBar.vue` | Sticky nav — RoadLancer brand only when logged out, Help & Support trigger restricted strictly to authenticated users |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
 | `frontend/src/components/UsersTable.vue` | Extracted admin user management table component with role/status badges and suspend actions |
-| `frontend/src/components/TicketsTable.vue` | `@tanstack/vue-table` support ticket & inbound email table matching UsersTable design with clickable headers for sorting, Max 8 Column Visibility Chooser (`columnVisibility` popover), interactive inline status/category/agent selects, pagination controls, and row click navigation to `/admin/support/:id` |
+| `frontend/src/components/TicketsTable.vue` | `@tanstack/vue-table` support ticket & inbound email table matching UsersTable design with clickable headers for sorting, Max 8 Column Visibility Chooser (`columnVisibility` popover with "Assigned Agent" toggle hidden for sub-agents), interactive inline status/category/agent selects (agent column hidden for sub-agents), pagination controls, and row click navigation to `/admin/support/:id` |
 | `frontend/src/components/VerificationDetailDialog.vue` | Detailed dossier inspection modal displaying user profile fields, attached document images (Aadhaar, DL, RC, Insurance, GST, PAN), status badges, and action controls with approved verification reset lock |
 | `frontend/src/components/FileUpload.vue` | Reusable image upload component for Base64 document attachments with thumbnail preview & validation |
 | `frontend/src/components/CreateShipmentDialog.vue` | Shipment creation form with all fields (title, goods, weight, pickup/dropoff, vehicle) |
@@ -958,12 +969,12 @@ export function useVerificationStatus() {
 | `frontend/src/views/DriverDashboard.vue` | Driver dashboard — assigned shipments tab, bid history, external links |
 | `frontend/src/views/ShipperDashboard.vue` | Shipper dashboard — KPIs, shipment list, create/review buttons |
 | `frontend/src/views/ShipmentDetailView.vue` | Shipment detail — status timeline, bid management, transit actions, AI price estimate |
-| `frontend/src/views/AdminDashboard.vue` | Admin dashboard — compact stats cards (including Unverified card for users who haven't applied), role filtering & sorting selects, user table (admins excluded), forced price badge. Status-based cards hidden for non-supreme agents. |
-| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view matching AdminDashboard UI (shared gradient header with Agent Management link for supreme admins, 7 Lucide KPI cards, unified search/filter header, `@tanstack/vue-table` sorting sync, and modal inspect/reply desk) |
+| `frontend/src/views/AdminDashboard.vue` | Admin dashboard — compact stats cards (including Unverified card for users who haven't applied), role filtering & sorting selects, user table (admins excluded), forced price badge. Status-based cards and agent management link hidden for non-supreme agents. |
+| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view matching AdminDashboard UI (shared gradient header with Agent Management link for supreme admins, 7 Lucide KPI cards, unified search/filter header with agent filter hidden for sub-agents, `@tanstack/vue-table` sorting sync, modal inspect/reply desk, agent assignment controls hidden for sub-agents) |
 | `frontend/src/views/AdminTicketDetailView.vue` | Dedicated ticket inspection & resolution page (`/admin/support/:id`) displaying subject, linked profile verification, priority & status badges, assigned agent selection (`[ASSIGNED_TO:id|name]`), quick resolve button, and internal notes |
 | `frontend/src/views/AdminLoginView.vue` | Separate admin/agent login page at `/admin/login` |
-| `frontend/src/views/AdminAgentManagement.vue` | Agent management page at `/admin/agents` (supreme admin only) — create/deactivate/activate agents |
-| `frontend/src/components/AgentsTable.vue` | Agent management table with deactivate/activate actions |
+| `frontend/src/views/AdminAgentManagement.vue` | Agent management page at `/admin/agents` (supreme admin only) — create/deactivate/activate agents with confirmation dialog, deactivation clears `[ASSIGNED_TO]` from tickets |
+| `frontend/src/components/AgentsTable.vue` | Agent management table with deactivate/activate actions (activate button shown for suspended agents) |
 | `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (29 tests — includes unverified card, non-supreme visibility) |
 | `frontend/src/views/__tests__/renderDashboard.ts` | Shared test helper — wraps render with common stubs |
 | `frontend/src/components/__tests__/TicketsTable.spec.ts` | TicketsTable & column customization unit test suite (table layout without sender column, inline agent/status/category select events, and Suite 6 Max 8 Column Chooser checkbox UX assertions) |
@@ -1036,26 +1047,32 @@ bun run test:unit:watch    # Watch mode
 
 ## 📊 13. Completion Summary
 
-### What's Done (92%)
+### What's Done (93%)
 
+#### Recently Completed
+| Feature | Status | Details |
+|---------|--------|---------|
+| Agent UI Refinements | ✅ | Agent filter dropdown hidden for sub-agents, per-row agent assignment column hidden for sub-agents, "Assigned Agent" column toggle hidden in column chooser for sub-agents, fixed deactivation bug (event handler passed userId string but treated as agent object) |
+
+#### Core Features
 | Feature | Status | Details |
 |---------|--------|---------|
 | Auth System | ✅ | Better Auth server, login, sessions, role-based access, seed data, separate admin/agent login page |
-| Backend Routes | ✅ | 40+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email, agent management) |
+| Backend Routes | ✅ | 40+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email, agent management with ticket unassignment) |
 | AI Pricing Engine | ✅ | Rule-based with distance/weight/vehicle/goods/fuel/labour/seasonal factors |
 | Database Schema | ✅ | 11 models (users, sessions, shipments, bids, verifications, support_tickets, ticket_replies, `isSupreme` field) |
-| Frontend Views | ✅ | 16 views (all dashboards, login pages, home, shipment detail, verification, admin support desk, admin ticket detail view, agent management) |
-| Frontend Composables | ✅ | 14 composables (all TanStack Query-based, including `useAdminAgents`) |
-| Frontend Components | ✅ | 11 components (dialogs, UsersTable, AgentsTable, TicketsTable with `@tanstack/vue-table`, forms, nav, support email simulator) |
+| Frontend Views | ✅ | 16 views (all dashboards, login pages, home, shipment detail, verification, admin support desk with sub-agent restrictions, admin ticket detail view, agent management) |
+| Frontend Composables | ✅ | 14 composables (all TanStack Query-based, including `useAdminAgents` with deactivation/ticket unassignment) |
+| Frontend Components | ✅ | 11 components (dialogs, UsersTable, AgentsTable, TicketsTable with `@tanstack/vue-table` and sub-agent restrictions, forms, nav, support email simulator) |
 | Shipment Flow | ✅ | Create → AI pricing → Price confirm → Bidding → Accept → Transit |
-| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets with `@tanstack/vue-table` column sorting, assigned agents (`[ASSIGNED_TO]`), account linking, standardized Admin Helpdesk UI, & dedicated ticket resolution view (`/admin/support/:id`) |
+| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets with `@tanstack/vue-table` column sorting, assigned agents (`[ASSIGNED_TO]`), account linking, standardized Admin Helpdesk UI, & dedicated ticket resolution view (`/admin/support/:id`) with sub-agent UI restrictions |
 | Forced Price Protection | ✅ | Shipper override with admin-only visibility |
 | Marketing Landing Page | ✅ | Public home page with features, how-it-works, stats |
 | User Registration | ✅ | Driver and Shipper registration with Zod validation & pending admin approval flow |
-| Agent Management | ✅ | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility |
+| Agent Management | ✅ | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility, sub-agent UI restrictions, deactivation bug fix |
 | Testing | ✅ | 72 component tests passing (AdminDashboard: 29 tests, TicketsTable: 14 tests, ReplyForm: 10 tests, others) |
 
-### What's Pending (~8%)
+### What's Pending (~7%)
 
 #### Critical for Demo
 | Item | Impact | Effort |
@@ -1070,6 +1087,12 @@ bun run test:unit:watch    # Watch mode
 | Bidding countdown timer | `bidding_ends_at` field exists but no UI timer | 1-2 hours |
 | Sample seed data | No sample shipments/bids for demo | 1-2 hours |
 
+### Recently Fixed
+| Item | Fix |
+|------|-----|
+| **Agent deactivation not working** | Event handler bug: `openDeactivateDialog` received userId string but treated as agent object. Fixed to look up full agent object from list. |
+| **Sub-agent sees agent filter/assignment controls** | Hidden agent filter dropdown, per-row assignment column, and column toggle for non-supreme agents. |
+
 ### Phase Progress
 
 ```
@@ -1080,12 +1103,18 @@ Phase 3 (FastAPI Backend) ✅ 95%  (missing OTP routes)
 Phase 4 (Vue Frontend)    ✅ 95%  (missing charts/analytics)
 Phase 5 (Core Features)   ✅ 100% (missing OTP verification)
 Phase 5.11 (Agent Mgmt)   ✅ 100% (isSupreme, agent CRUD, login separation, agent-scoped tickets)
+Phase 5.12 (Agent UI)     ✅ 100% (sub-agent UI restrictions, deactivation bug fix)
 Phase 6 (Polish)          ⬜ 0%   (not started)
 ```
 
 ### Recommendation
 
-**For college demo:** The core shipment + bidding + pricing + registration + agent management flow is fully functional. The remaining pieces (OTP, charts) are nice enhancements but not critical for demonstrating the main value proposition.
+**For college demo:** The core shipment + bidding + pricing + registration + agent management flow is fully functional with proper sub-agent UI restrictions. The remaining pieces (OTP, charts) are nice enhancements but not critical for demonstrating the main value proposition.
+
+**Recent improvements:**
+1. Agent deactivation now properly unassigns tickets from the deactivated agent
+2. Sub-agents no longer see confusing agent filter/assignment controls on the support desk
+3. Activate button properly appears for deactivated agents
 
 **Next steps (in order):**
 1. Add charts/analytics (3-4 hours) — improves dashboard visual appeal
@@ -1098,3 +1127,8 @@ Phase 6 (Polish)          ⬜ 0%   (not started)
 - Add E2E tests only for critical user flows
 - Run `bun run test:unit` on every code change
 - Run `bun run test:e2e` only before demos/presentations
+
+**Key testing areas for recent changes:**
+- Agent deactivation flow (deactivate → ticket unassignment → activate)
+- Sub-agent UI restrictions (hidden controls for non-supreme agents)
+- Column chooser behavior with sub-agent restrictions

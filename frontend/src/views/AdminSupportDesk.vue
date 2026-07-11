@@ -389,8 +389,9 @@ function getStatusBadgeClass(status: string) {
                 />
               </div>
 
-              <!-- Filter by Assigned Agent -->
+              <!-- Filter by Assigned Agent (supreme admin only) -->
               <select
+                v-if="user?.isSupreme"
                 v-model="agentFilter"
                 class="h-9 px-3 bg-background border border-input rounded-md text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-2xs"
                 title="Filter tickets by assigned agent"

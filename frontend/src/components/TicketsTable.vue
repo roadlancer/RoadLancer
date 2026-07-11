@@ -34,6 +34,9 @@ import {
   UserCheck,
   SlidersHorizontal,
 } from '@lucide/vue'
+import { useAuth } from '@/composables/useAuth'
+
+const { user } = useAuth()
 
 const props = defineProps<{
   tickets: SupportTicket[]
@@ -343,7 +346,7 @@ const table = useVueTable({
 
           <div class="space-y-1.5 max-h-60 overflow-y-auto pr-1 text-xs">
             <label
-              v-for="col in toggleableColumns"
+              v-for="col in toggleableColumns.filter(c => user?.isSupreme || c.id !== 'assigned_to')"
               :key="col.id"
               class="flex items-center justify-between p-1.5 rounded-lg hover:bg-muted/60 transition-colors select-none"
               :class="col.required || (!isColumnVisible(col.id) && visibleColumnCount >= 8) ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'"
@@ -530,7 +533,7 @@ const table = useVueTable({
               </select>
             </td>
             <!-- Assigned Agent (Interactive Inline Assignment) -->
-            <td v-if="isColumnVisible('assigned_to')" class="py-2.5 px-2.5 sm:px-3 whitespace-nowrap" @click.stop>
+            <td v-if="user?.isSupreme && isColumnVisible('assigned_to')" class="py-2.5 px-2.5 sm:px-3 whitespace-nowrap" @click.stop>
               <div class="relative flex items-center">
                 <UserCheck
                   v-if="parseAssignedAgent(row.original.admin_notes).agentName"
