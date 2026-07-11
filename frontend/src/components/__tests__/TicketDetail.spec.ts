@@ -1,7 +1,24 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/vue'
 import TicketDetail from '../TicketDetail.vue'
 import type { SupportTicket } from '@/composables/useSupportTickets'
+import api from '@/lib/api'
+import { generateText } from 'ai'
+
+vi.mock('@/lib/api', () => ({
+  default: {
+    post: vi.fn(),
+    get: vi.fn(),
+  },
+}))
+
+vi.mock('ai', () => ({
+  generateText: vi.fn(),
+}))
+
+vi.mock('@ai-sdk/google', () => ({
+  createGoogleGenerativeAI: vi.fn(() => vi.fn()),
+}))
 
 const mockRouterPush = vi.fn()
 vi.mock('vue-router', () => ({
@@ -11,6 +28,10 @@ vi.mock('vue-router', () => ({
 }))
 
 describe('TicketDetail Component Unit Tests', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   const sampleTicket: SupportTicket = {
     id: 't-202',
     ticket_number: 'SUP-202',
@@ -32,6 +53,17 @@ describe('TicketDetail Component Unit Tests', () => {
       role: 'transporter',
       phone: '+91 9876543210',
     },
+    replies: [
+      {
+        id: 'r-1',
+        ticket_id: 't-202',
+        sender_name: 'Sarah Jenkins',
+        sender_role: 'admin',
+        sender_type: 'agent',
+        message: 'Could you share the exact error code displayed on screen?',
+        created_at: '2026-07-10T09:00:00Z',
+      },
+    ],
   }
 
   describe('1. Subject Card Rendering', () => {
@@ -134,4 +166,98 @@ describe('TicketDetail Component Unit Tests', () => {
       expect(mockRouterPush).toHaveBeenCalledWith('/admin')
     })
   })
+
+  describe('4. AI Summarize Ticket & Conversation Feature', () => {
+    it('renders summarize button below message with sparkles icon', () => {
+      render(TicketDetail, {
+        props: {
+          ticket: sampleTicket,
+        },
+      })
+
+      const summarizeBtn = screen.getByTestId('ticket-summarize-button')
+      expect(summarizeBtn).toBeTruthy()
+      expect(summarizeBtn.textContent).toContain('Summarize Ticket & Conversation')
+    })
+
+    it('calls /auth/ai/summarize and displays summary text upon clicking button', async () => {
+      vi.mocked(api.post).mockResolvedValueOnce({
+        data: {
+          summary: '1. **Issue Overview**: Customer cannot save bank account number.\n2. **Current Status**: Agent requested exact error code.\n3. **Next Action**: Await customer reply or check backend billing logs.',
+          success: true,
+        },
+      })
+
+      render(TicketDetail, {
+        props: {
+          ticket: sampleTicket,
+        },
+      })
+
+      const summarizeBtn = screen.getByTestId('ticket-summarize-button')
+      await fireEvent.click(summarizeBtn)
+
+      expect(api.post).toHaveBeenCalledWith(
+        '/auth/ai/summarize',
+        expect.objectContaining({
+          subject: 'Cannot update bank details',
+          message: 'Whenever I try to save my bank account number, it gives an error.',
+          replies: sampleTicket.replies,
+        }),
+        expect.any(Object)
+      )
+
+      const summaryBox = await screen.findByTestId('ticket-summary-box')
+      expect(summaryBox.textContent).toContain('Customer cannot save bank account number')
+      expect(summaryBox.textContent).toContain('RoadLancer AI')
+      expect(summarizeBtn.textContent).toContain('Regenerate Summary')
+    })
+
+    it('re-generates summary every time summarize button is clicked even when summary already exists', async () => {
+      vi.mocked(api.post)
+        .mockResolvedValueOnce({
+          data: { summary: 'First AI summary generation output.', success: true },
+        })
+        .mockResolvedValueOnce({
+          data: { summary: 'Second regenerated summary after new context.', success: true },
+        })
+
+      render(TicketDetail, {
+        props: {
+          ticket: sampleTicket,
+        },
+      })
+
+      const summarizeBtn = screen.getByTestId('ticket-summarize-button')
+      await fireEvent.click(summarizeBtn)
+
+      const summaryBox = await screen.findByTestId('ticket-summary-box')
+      expect(summaryBox.textContent).toContain('First AI summary generation output')
+
+      // Click button again -> re-generates
+      await fireEvent.click(summarizeBtn)
+      expect(api.post).toHaveBeenCalledTimes(2)
+      expect(summaryBox.textContent).toContain('Second regenerated summary after new context')
+    })
+
+    it('falls back to client-side generateText if backend API call fails', async () => {
+      vi.mocked(api.post).mockRejectedValueOnce(new Error('Server Error'))
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'Client-side fallback summary generation.',
+      } as any)
+
+      render(TicketDetail, {
+        props: {
+          ticket: sampleTicket,
+        },
+      })
+
+      const summarizeBtn = screen.getByTestId('ticket-summarize-button')
+      await fireEvent.click(summarizeBtn)
+
+      const summaryBox = await screen.findByTestId('ticket-summary-box')
+      expect(summaryBox.textContent).toContain('Client-side fallback summary generation')
+    })
+  })
 })
+
