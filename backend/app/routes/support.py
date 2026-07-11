@@ -424,8 +424,19 @@ async def admin_list_tickets(
 ):
     """
     Admin endpoint to list all support tickets across all users and sources.
+    Supreme admins see all tickets. Regular agents see only tickets assigned to them.
     """
     tickets = await db.support_tickets.find_many()
+
+    user = await db.user.find_unique(where={"id": admin["id"]})
+    is_supreme = getattr(user, "isSupreme", False) if user else False
+
+    if not is_supreme:
+        assignee_tag = f"[ASSIGNED_TO:{admin['id']}|"
+        tickets = [
+            t for t in tickets
+            if t.adminNotes and assignee_tag in (t.adminNotes or "")
+        ]
 
     if status and status in ("open", "in_progress", "resolved", "closed"):
         tickets = [t for t in tickets if t.status == status]
@@ -472,8 +483,20 @@ async def admin_list_tickets(
 async def admin_ticket_counts(admin: dict = Depends(get_admin_user)):
     """
     Admin endpoint returning KPI counts for support tickets.
+    Supreme admins see all tickets. Regular agents see only tickets assigned to them.
     """
     all_tickets = await db.support_tickets.find_many()
+
+    user = await db.user.find_unique(where={"id": admin["id"]})
+    is_supreme = getattr(user, "isSupreme", False) if user else False
+
+    if not is_supreme:
+        assignee_tag = f"[ASSIGNED_TO:{admin['id']}|"
+        all_tickets = [
+            t for t in all_tickets
+            if t.adminNotes and assignee_tag in (t.adminNotes or "")
+        ]
+
     return {
         "total": len(all_tickets),
         "open": sum(1 for t in all_tickets if t.status == "open"),
@@ -508,6 +531,13 @@ async def admin_get_ticket(
     )
     if not ticket:
         raise HTTPException(status_code=404, detail=f"Ticket not found ({clean_id})")
+
+    user_obj = await db.user.find_unique(where={"id": admin["id"]})
+    is_supreme = getattr(user_obj, "isSupreme", False) if user_obj else False
+    if not is_supreme:
+        assignee_tag = f"[ASSIGNED_TO:{admin['id']}|"
+        if not ticket.adminNotes or assignee_tag not in (ticket.adminNotes or ""):
+            raise HTTPException(status_code=403, detail="Access denied: ticket not assigned to you")
 
     user_map = {}
     if ticket.userId:

@@ -39,6 +39,7 @@ model user {
   role          Role       @default(driver)
   phone         String?
   suspended     Boolean    @default(false)
+  isSupreme     Boolean    @default(false)
   status        UserStatus @default(approved)
 
   session         session[]

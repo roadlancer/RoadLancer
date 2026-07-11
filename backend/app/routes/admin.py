@@ -39,3 +39,11 @@ async def get_admin_user(authorization: Optional[str] = Header(None)):
         "name": user.name,
         "role": role_str,
     }
+
+
+async def get_supreme_admin_user(authorization: Optional[str] = Header(None)):
+    admin = await get_admin_user(authorization)
+    user = await db.user.find_unique(where={"id": admin["id"]})
+    if not user or not getattr(user, "isSupreme", False):
+        raise HTTPException(status_code=403, detail="Supreme admin access required")
+    return admin

@@ -8,6 +8,8 @@ interface User {
   email: string
   role: string
   phone: string | null
+  suspended: boolean
+  isSupreme: boolean
 }
 
 const user = ref<User | null>(null)

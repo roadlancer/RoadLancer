@@ -44,6 +44,12 @@ export const auth = betterAuth({
         defaultValue: false,
         input: true,
       },
+      isSupreme: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: true,
+      },
       status: {
         type: ["pending", "approved", "rejected"],
         required: false,

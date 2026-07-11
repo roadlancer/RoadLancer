@@ -12,6 +12,8 @@ import ShipmentDetailView from '@/views/ShipmentDetailView.vue'
 import UserProfile from '@/views/UserProfile.vue'
 import AdminSupportDesk from '@/views/AdminSupportDesk.vue'
 import AdminTicketDetailView from '@/views/AdminTicketDetailView.vue'
+import AdminAgentManagement from '@/views/AdminAgentManagement.vue'
+import AdminLoginView from '@/views/AdminLoginView.vue'
 import { user, loading, fetchSession } from '@/composables/useAuth'
 
 const router = createRouter({
@@ -82,6 +84,12 @@ const router = createRouter({
       meta: { requiresAuth: true, role: 'admin' },
     },
     {
+      path: '/admin/login',
+      name: 'admin-login',
+      component: AdminLoginView,
+      meta: { guest: true },
+    },
+    {
       path: '/admin/profile',
       name: 'admin-profile',
       component: AdminProfile,
@@ -107,6 +115,12 @@ const router = createRouter({
       path: '/admin/support/:id',
       name: 'admin-support-detail',
       component: AdminTicketDetailView,
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/agents',
+      name: 'admin-agents',
+      component: AdminAgentManagement,
       meta: { requiresAuth: true, role: 'admin' },
     },
   ],

@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "bcrypt>=5.0.0",
     "fastapi>=0.138.1",
     "fastapi-betterauth>=0.2.6",
     "prisma>=0.15.0",
