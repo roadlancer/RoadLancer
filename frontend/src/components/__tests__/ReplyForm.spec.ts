@@ -1,6 +1,23 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/vue'
 import ReplyForm from '../ReplyForm.vue'
+import api from '@/lib/api'
+import { generateText } from 'ai'
+
+vi.mock('@/lib/api', () => ({
+  default: {
+    post: vi.fn(),
+    get: vi.fn(),
+  },
+}))
+
+vi.mock('ai', () => ({
+  generateText: vi.fn(),
+}))
+
+vi.mock('@ai-sdk/google', () => ({
+  createGoogleGenerativeAI: vi.fn(() => vi.fn()),
+}))
 
 describe('ReplyForm Component Unit Tests', () => {
   describe('1. ReplyForm Structure & Rendering', () => {
@@ -184,4 +201,121 @@ describe('ReplyForm Component Unit Tests', () => {
       expect(messageTextarea.value).toBe('')
     })
   })
+
+  describe('5. AI Polishing, Greeting & Signature Features', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+    })
+
+    it('sends draft, senderName, and extracted customerName to the backend polish API and updates message with polished text', async () => {
+      vi.mocked(api.post).mockResolvedValueOnce({
+        data: {
+          polished: 'Hi John,\n\nWe have investigated your ticket and issued the refund.\n\nBest regards,\nSarah Jenkins\nRoadLancer Support Team\nhttps://roadlancer.com',
+          success: true,
+        },
+      })
+
+      render(ReplyForm, {
+        props: {
+          senderEmail: 'john.smith@example.com',
+          customerName: 'John Smith',
+          defaultSenderName: 'Sarah Jenkins (Support Lead)',
+        },
+      })
+
+      const messageTextarea = screen.getByTestId('reply-message-textarea') as HTMLTextAreaElement
+      const polishButton = screen.getByTestId('reply-polish-button') as HTMLButtonElement
+
+      await fireEvent.update(messageTextarea, 'we looked into your ticket and refunded.')
+      await fireEvent.click(polishButton)
+
+      expect(api.post).toHaveBeenCalledWith(
+        '/auth/ai/polish',
+        expect.objectContaining({
+          draft: 'we looked into your ticket and refunded.',
+          senderName: 'Sarah Jenkins (Support Lead)',
+          customerName: 'John',
+          senderEmail: 'john.smith@example.com',
+        }),
+        expect.any(Object)
+      )
+
+      expect(messageTextarea.value).toContain('Hi John,')
+      expect(messageTextarea.value).toContain('https://roadlancer.com')
+    })
+
+    it('automatically prepends customer first name greeting and appends agent signature with domain name during client-side fallback if missing from model output', async () => {
+      vi.mocked(api.post).mockRejectedValueOnce(new Error('Network Error'))
+      vi.mocked(generateText).mockResolvedValueOnce({
+        text: 'We have resolved the billing discrepancy.',
+      } as any)
+
+      render(ReplyForm, {
+        props: {
+          senderEmail: 'mike@logistics.com',
+          customerName: 'Mike Ross',
+          defaultSenderName: 'Sarah Jenkins',
+        },
+      })
+
+      const messageTextarea = screen.getByTestId('reply-message-textarea') as HTMLTextAreaElement
+      const polishButton = screen.getByTestId('reply-polish-button') as HTMLButtonElement
+
+      await fireEvent.update(messageTextarea, 'resolved the billing issue')
+      await fireEvent.click(polishButton)
+
+      // Post-processing should prepend "Hi Mike,\n\n" and append signature
+      expect(messageTextarea.value).toContain('Hi Mike,')
+      expect(messageTextarea.value).toContain('Best regards,\nSarah Jenkins\nRoadLancer Support Team\nhttps://roadlancer.com')
+    })
+
+    it('displays rate limit / quota exceeded error banner when polishing fails with 429 quota error', async () => {
+      vi.mocked(api.post).mockRejectedValueOnce(new Error('Network Error'))
+      vi.mocked(generateText).mockRejectedValueOnce({
+        status: 429,
+        message: 'Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 5',
+      })
+
+      render(ReplyForm, {
+        props: {
+          defaultSenderName: 'Sarah Jenkins',
+        },
+      })
+
+      const messageTextarea = screen.getByTestId('reply-message-textarea') as HTMLTextAreaElement
+      const polishButton = screen.getByTestId('reply-polish-button') as HTMLButtonElement
+
+      await fireEvent.update(messageTextarea, 'checking status')
+      await fireEvent.click(polishButton)
+
+      const errorAlert = await screen.findByTestId('reply-ai-status-banner')
+      expect(errorAlert.textContent).toContain('Model Rate Limit / Quota Exceeded')
+      expect(errorAlert.textContent).toContain('You have exceeded the free tier rate limit on Gemini 2.5 Flash')
+    })
+
+    it('displays API key incorrect banner when backend returns API_KEY_INVALID error', async () => {
+      vi.mocked(api.post).mockRejectedValueOnce({
+        response: {
+          status: 401,
+          data: { code: 'API_KEY_INVALID' },
+        },
+      })
+
+      render(ReplyForm, {
+        props: {
+          defaultSenderName: 'Sarah Jenkins',
+        },
+      })
+
+      const messageTextarea = screen.getByTestId('reply-message-textarea') as HTMLTextAreaElement
+      const polishButton = screen.getByTestId('reply-polish-button') as HTMLButtonElement
+
+      await fireEvent.update(messageTextarea, 'checking status')
+      await fireEvent.click(polishButton)
+
+      const errorAlert = await screen.findByTestId('reply-ai-status-banner')
+      expect(errorAlert.textContent).toContain('Gemini API Key Incorrect / Unauthorized')
+    })
+  })
 })
+

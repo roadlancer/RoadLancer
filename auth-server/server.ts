@@ -127,6 +127,94 @@ https://roadlancer.com
         });
       }
     }
+
+    if (req.method === "POST" && pathname === "/api/auth/ai/summarize") {
+      try {
+        const body = await req.json();
+        const { generateText } = await import("ai");
+        const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "API key is missing on backend server", code: "API_KEY_MISSING" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const googleProvider = createGoogleGenerativeAI({ apiKey });
+        const replies = Array.isArray(body.replies) ? body.replies : [];
+        const repliesText = replies
+          .map((r: any) => `[${(r.sender_role || "user").toUpperCase()} - ${r.sender_name || "User"}]: ${r.message}`)
+          .join("\n\n");
+        const promptInput = `TICKET SUBJECT: ${body.subject || "N/A"}\n\nORIGINAL CUSTOMER MESSAGE:\n${body.message || "N/A"}\n\nCONVERSATION HISTORY (${replies.length} replies):\n${repliesText || "No replies yet."}`;
+        
+        const systemPrompt = `You are an AI support assistant for RoadLancer (a trucking and logistics platform).
+Your task is to provide a concise, high-level summary of the support ticket and any subsequent conversation/replies.
+Structure your summary cleanly with:
+1. **Issue Overview**: A 1-2 sentence summary of the customer's core issue or request.
+2. **Current Status & Key Updates**: What has been discussed or resolved in the replies so far (if any).
+3. **Next Action Required**: What should the support agent do next to resolve or move this ticket forward.
+Output ONLY the markdown summary directly without extra chatter or intro text.`;
+
+        let text = "";
+        let usage: any = null;
+        try {
+          const res = await generateText({
+            model: googleProvider("gemini-3.1-flash-lite"),
+            maxTokens: 400,
+            temperature: 0.3,
+            maxRetries: 0,
+            system: systemPrompt,
+            prompt: promptInput,
+          });
+          text = res.text;
+          usage = res.usage;
+        } catch (firstErr: any) {
+          const firstMsg = (firstErr?.message || "").toLowerCase();
+          if (firstMsg.includes("quota") || firstMsg.includes("rate") || firstMsg.includes("429") || firstErr?.status === 429 || firstMsg.includes("not found") || firstMsg.includes("404") || firstErr?.status === 404 || firstMsg.includes("is not supported") || firstMsg.includes("invalid model")) {
+            const fallbackRes = await generateText({
+              model: googleProvider("gemini-1.5-flash"),
+              maxTokens: 400,
+              temperature: 0.3,
+              maxRetries: 0,
+              system: systemPrompt,
+              prompt: promptInput,
+            });
+            text = fallbackRes.text;
+            usage = fallbackRes.usage;
+          } else {
+            throw firstErr;
+          }
+        }
+
+        return new Response(JSON.stringify({ 
+          summary: text.trim(), 
+          success: true,
+          usage: usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          source: "Backend Server"
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err: any) {
+        console.error("Error summarizing ticket in auth-server:", err);
+        const errMsg = err?.message || "Failed to summarize ticket";
+        const errMsgUpper = errMsg.toUpperCase();
+        let code = "UNKNOWN_ERROR";
+        let status = 500;
+        if (errMsgUpper.includes("API_KEY_INVALID") || errMsgUpper.includes("KEY NOT VALID") || errMsgUpper.includes("401") || errMsgUpper.includes("UNAUTHORIZED") || err?.status === 401 || err?.status === 403) {
+          code = "API_KEY_INVALID";
+          status = 401;
+        } else if (errMsgUpper.includes("QUOTA") || errMsgUpper.includes("RATE") || errMsgUpper.includes("RESOURCE_EXHAUSTED") || errMsgUpper.includes("429") || err?.status === 429) {
+          code = "TOKEN_QUOTA_EXHAUSTED";
+          status = 429;
+        }
+        return new Response(JSON.stringify({ error: errMsg, code }), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     return auth.handler(req);
   },
   port,
