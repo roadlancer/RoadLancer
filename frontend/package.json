@@ -20,6 +20,8 @@
     "@tanstack/vue-table": "^8.21.3",
     "@vuehookform/core": "^0.7.0",
     "@vueuse/core": "^14.3.0",
+    "ai": "^4.1.0",
+    "@ai-sdk/google": "^1.1.0",
     "axios": "^1.9.0",
     "better-auth": "^1.6.22",
     "class-variance-authority": "^0.7.1",

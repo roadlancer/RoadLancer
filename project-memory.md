@@ -103,22 +103,23 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 5.10 | Security Hardening: DOMPurify XSS sanitization (`@/lib/sanitize.ts`), Pydantic `Field(max_length=...)` on all request models, Prisma `@db.VarChar(...)` on `support_tickets` & `ticket_replies`, HTML `maxlength` + Zod `.max()` on frontend forms, `bodyHtml` column on `ticket_replies` | ✅ Complete |
 | Phase 5.11 | Agent Management: `isSupreme` flag on user model, create/deactivate/activate agent endpoints (supreme admin only), separate admin/agent login page (`/admin/login`), agent-scoped ticket filtering (non-supreme agents only see assigned tickets), Unverified stats card, status filter cards hidden for non-supreme agents | ✅ Complete |
 | Phase 5.12 | Agent UI Refinements: Agent filter dropdown hidden for sub-agents on support desk, per-row agent assignment column hidden for sub-agents, "Assigned Agent" column toggle hidden in column chooser for sub-agents, fixed deactivation bug (event handler passed userId string but treated as agent object) | ✅ Complete |
+| Phase 5.13 | AI Support Draft Polishing & Standardization: Integrated `gemini-3.1-flash-lite` (`15 RPM` on Free Tier) with `gemini-1.5-flash` automatic rate-limit/fallback safety net across `auth-server/server.ts` & `ReplyForm.vue`. Unified request/response schemas (`PolishReplyRequest`, `PolishReplyResponse`) alongside ticket models in `backend/app/routes/support.py` & `useSupportTickets.ts`. Enforced prompt rules (#5 & #6) + 100% code post-processing guarantee ensuring every reply addresses the customer by first name (`Hi John,`) and signs off cleanly with the agent's exact name (`senderName`) alongside `https://roadlancer.com` | ✅ Complete |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
-### Overall Completion: **~98%**
+### Overall Completion: **~99%**
 
 | Area | Completion | Notes |
 |------|------------|-------|
 | Auth System | 100% | Better Auth, login, sessions, role-based access, authenticated support trigger, separate admin/agent login page |
-| Backend Routes | 100% | 40+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate with ticket unassignment). All Pydantic request models enforce `max_length` constraints. |
+| Backend Routes | 100% | 40+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate with ticket unassignment, unified AI `PolishReplyRequest`/`PolishReplyResponse` Pydantic schemas). All Pydantic request models enforce `max_length` constraints. |
 | AI Pricing Engine | 100% | Rule-based with all factors |
 | Database Schema | 100% | 11 models implemented (incl. `support_tickets` with `VarChar` limits & `ticket_replies` with `bodyHtml`, `isSupreme` field on user model) |
 | Security | 100% | DOMPurify XSS sanitization on all user-supplied content, three-layer input length enforcement (Prisma VarChar → Pydantic max_length → HTML maxlength/Zod .max()) |
-| Frontend Views | 98% | 16 views (all dashboards, login (driver/shipper), admin/agent login (`/admin/login`), home, shipment detail, verification with AI checked status lock, admin support desk with agent filtering for supreme admins only, admin ticket detail view with assign-to-me, agent management with deactivation bug fix) |
-| Frontend Composables | 100% | 14 composables including `useSupportAgents()`, `useAdminAgents()` for unified agent management (real DB agents only, no dummy data, deactivation with ticket unassignment) |
-| Frontend Components | 100% | 11 components (`UsersTable`, `AgentsTable`, `TicketsTable` with `@tanstack/vue-table` sorting, pagination, Max 8 column visibility popover, and direct inline status/category/agent selects with sub-agent restrictions) |
+| Frontend Views | 98% | 16 views (all dashboards, login (driver/shipper), admin/agent login (`/admin/login`), home, shipment detail, verification with AI checked status lock, admin support desk with agent filtering for supreme admins only, admin ticket detail view with assign-to-me & customer name passing, agent management with deactivation bug fix) |
+| Frontend Composables | 100% | 14 composables including `useSupportAgents()`, `useAdminAgents()` for unified agent management, `useSupportTickets()` with unified `PolishReplyRequest`/`PolishReplyResponse` interfaces |
+| Frontend Components | 100% | 11 components (`UsersTable`, `AgentsTable`, `TicketsTable`, `ReplyForm` with `gemini-3.1-flash-lite` fast API/client polishing, customer first name extraction, and signature guarantee) |
 | Shipment Flow | 100% | Create → Price → Bidding → Transit |
-| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI & dedicated resolution page, agent-scoped ticket filtering, sub-agent UI restrictions |
+| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI, agent-scoped ticket filtering, sub-agent UI restrictions, AI draft polishing with mandatory greeting (`Hi John,`) and domain/agent signature (`https://roadlancer.com`) |
 | Agent Management | 100% | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility, separate login page, sub-agent UI restrictions, deactivation bug fix |
 | Testing | 97% | 72 component tests passing (AdminDashboard: 29 tests incl. unverified card & non-supreme visibility, TicketsTable: 14 tests, ReplyForm: 10 tests, TicketDetail, UpdateTicket, ReplyThread) |
 
@@ -138,6 +139,8 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 |------|-----|
 | **Agent deactivation not working** | Event handler bug: `openDeactivateDialog` received userId string but treated as agent object. Fixed to look up full agent object from list. |
 | **Sub-agent sees agent filter/assignment controls** | Hidden agent filter dropdown, per-row assignment column, and column toggle for non-supreme agents. |
+| **Free Tier Quota Exceeded during AI Polishing (`limit: 5`)** | Upgraded primary model to `gemini-3.1-flash-lite` (`15 RPM` on Free Tier), disabled SDK retries (`maxRetries: 0`), and added automatic safety fallback to `gemini-1.5-flash` (`15 RPM`). Normalizes error checking with `.toUpperCase()`. |
+| **Missing Customer Greeting and Agent Domain Signature** | Extracted customer first name (`customerFirstName`) dynamically from ticket sender/user name or email prefix (`props.customerName`). Added prompt rules (#5 & #6) + guaranteed code post-processing appending (`Hi John,` and `Best regards,\n${senderName}\nRoadLancer Support Team\nhttps://roadlancer.com`). |
 
 ### Testing Strategy
 

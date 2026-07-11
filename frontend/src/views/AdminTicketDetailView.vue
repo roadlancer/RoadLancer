@@ -244,6 +244,7 @@ async function quickResolve() {
         <!-- Submit New Reply Form Component -->
         <ReplyForm
           :sender-email="ticket.sender_email"
+          :customer-name="ticket.sender_name || ticket.user?.name || ''"
           :default-sender-name="authUser?.name || replyAgentName || 'Sarah Jenkins (Support Lead)'"
           :is-submitting="isReplying"
           :show-status-notice="true"

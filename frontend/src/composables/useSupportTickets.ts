@@ -5,6 +5,18 @@ import { useAuth } from './useAuth'
 import { useAdminUsers } from './useAdminUsers'
 import { sanitize, sanitizeText } from '@/lib/sanitize'
 
+export interface PolishReplyRequest {
+  draft: string
+  message?: string
+}
+
+export interface PolishReplyResponse {
+  polished: string
+  success: boolean
+  source?: string
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
+}
+
 export interface SupportTicketReply {
   id: string
   ticket_id: string
