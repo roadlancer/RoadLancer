@@ -8,6 +8,7 @@ import {
   useSupportAgents,
 } from '@/composables/useSupportTickets'
 import { useAdminUsers } from '@/composables/useAdminUsers'
+import { useAuth } from '@/composables/useAuth'
 import TicketsTable from '@/components/TicketsTable.vue'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,8 @@ import {
   XCircle,
   Activity,
 } from '@lucide/vue'
+
+const { user } = useAuth()
 
 const {
   tickets,
@@ -215,6 +218,13 @@ function getStatusBadgeClass(status: string) {
             class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-extrabold text-xs transition-all flex items-center gap-1.5"
           >
             <span>👥</span> User Management
+          </a>
+          <a
+            v-if="user?.isSupreme"
+            href="/admin/agents"
+            class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-extrabold text-xs transition-all flex items-center gap-1.5"
+          >
+            <span>🤖</span> Agent Management
           </a>
           <a
             href="/admin/support"

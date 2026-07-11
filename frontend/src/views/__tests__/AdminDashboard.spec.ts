@@ -52,6 +52,21 @@ vi.mock('@/composables/useAdminUsers', () => ({
   }),
 }))
 
+// --- Mock Admin Agents Composable ---
+const mockAgents = ref<any[]>([])
+const mockLoadingAgents = ref(false)
+const mockDeactivateAgent = { mutate: vi.fn(), isPending: ref(false) }
+const mockActivateAgent = { mutate: vi.fn(), isPending: ref(false) }
+
+vi.mock('@/composables/useAdminAgents', () => ({
+  useAdminAgents: () => ({
+    data: mockAgents,
+    isLoading: mockLoadingAgents,
+    deactivateAgent: mockDeactivateAgent,
+    activateAgent: mockActivateAgent,
+  }),
+}))
+
 describe('AdminDashboard Component Tests', () => {
 
   beforeEach(() => {
@@ -63,6 +78,7 @@ describe('AdminDashboard Component Tests', () => {
       name: 'Super Admin',
       email: 'admin@roadlancer.com',
       role: 'admin',
+      isSupreme: true,
     }
     mockAuthLoading.value = false
 
@@ -125,10 +141,10 @@ describe('AdminDashboard Component Tests', () => {
   describe('Summary Stats Cards', () => {
     it('computes and renders correct counts across statistics cards', () => {
       mockUsers.value = [
-        { id: '1', role: 'driver', suspended: false },
-        { id: '2', role: 'driver', suspended: true },
-        { id: '3', role: 'shipper', suspended: false },
-        { id: '4', role: 'admin', suspended: false },
+        { id: '1', role: 'driver', suspended: false, verification_status: 'approved' },
+        { id: '2', role: 'driver', suspended: true, verification_status: 'none' },
+        { id: '3', role: 'shipper', suspended: false, verification_status: 'pending' },
+        { id: '4', role: 'admin', suspended: false, verification_status: 'approved' },
       ]
       mockPendingCount.value = 12
       mockRejectedCount.value = 3
@@ -138,17 +154,18 @@ describe('AdminDashboard Component Tests', () => {
       expect(screen.getByText('Total Users')).toBeInTheDocument()
       expect(screen.getAllByText('Drivers').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Shippers').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Admins').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getByText('Pending')).toBeInTheDocument()
-      expect(screen.getByText('Rejected')).toBeInTheDocument()
+      expect(screen.queryByText('Admins')).not.toBeInTheDocument()
+      expect(screen.getAllByText('Pending').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Rejected').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Suspended').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Unverified').length).toBeGreaterThanOrEqual(1)
 
-      // Total users: 4
-      expect(screen.getByText('4')).toBeInTheDocument()
+      // Total users: 3 (admin excluded)
+      expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1)
       // Pending: 12
       expect(screen.getByText('12')).toBeInTheDocument()
       // Rejected: 3
-      expect(screen.getByText('3')).toBeInTheDocument()
+      expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -283,18 +300,10 @@ describe('AdminDashboard Component Tests', () => {
   describe('User Suspension Workflows', () => {
     beforeEach(() => {
       mockUsers.value = [
-        { id: 'admin-1', name: 'Super Admin', role: 'admin', suspended: false },
         { id: 'driver-99', name: 'Fast Driver', role: 'driver', suspended: false },
         { id: 'shipper-88', name: 'Reliable Shipper', role: 'shipper', suspended: false },
         { id: 'suspended-77', name: 'Bad Driver', role: 'driver', suspended: true },
       ]
-    })
-
-    it('does not display Suspend or Unsuspend buttons for admin role users', () => {
-      renderDashboard()
-
-      const adminRow = screen.getByText('Super Admin').closest('tr')!
-      expect(adminRow.textContent).not.toContain('Suspend')
     })
 
     it('clicking Suspend opens dialog with driver-specific reasons', async () => {
@@ -367,6 +376,7 @@ describe('AdminDashboard Component Tests', () => {
         { id: '3', name: 'Charlie Admin', email: 'charlie@admin.com', role: 'admin', verification_status: 'approved', suspended: false },
         { id: '4', name: 'Dave Rejected', email: 'dave@driver.com', role: 'driver', verification_status: 'rejected', suspended: false },
         { id: '5', name: 'Eve Suspended', email: 'eve@shipper.com', role: 'shipper', verification_status: 'approved', suspended: true },
+        { id: '6', name: 'Frank New', email: 'frank@driver.com', role: 'driver', verification_status: 'none', suspended: false },
       ]
       mockPendingCount.value = 1
       mockRejectedCount.value = 1
@@ -379,7 +389,8 @@ describe('AdminDashboard Component Tests', () => {
       expect(screen.getByText('Total Users')).toBeInTheDocument()
       expect(screen.getAllByText('Drivers').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Shippers').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Admins').length).toBeGreaterThanOrEqual(1)
+      expect(screen.queryByText('Admins')).not.toBeInTheDocument()
+      expect(screen.getAllByText('Unverified').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Verified').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Pending').length).toBeGreaterThanOrEqual(1)
       expect(screen.getAllByText('Rejected').length).toBeGreaterThanOrEqual(1)
@@ -421,15 +432,16 @@ describe('AdminDashboard Component Tests', () => {
       expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
     })
 
-    it('clicking Admins card sets activeTab to "admin" and filters table to only admins', async () => {
+    it('clicking Unverified card sets activeTab to "unverified" and filters table to users with no verification', async () => {
       renderDashboard()
 
-      const adminsCard = screen.getAllByText('Admins').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
-      await fireEvent.click(adminsCard)
+      const unverifiedCard = screen.getAllByText('Unverified').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
+      await fireEvent.click(unverifiedCard)
 
-      expect(mockActiveTab.value).toBe('admin')
-      expect(screen.getByText('Charlie Admin')).toBeInTheDocument()
+      expect(mockActiveTab.value).toBe('unverified')
+      expect(screen.getByText('Frank New')).toBeInTheDocument()
       expect(screen.queryByText('Alice Driver')).not.toBeInTheDocument()
+      expect(screen.queryByText('Bob Shipper')).not.toBeInTheDocument()
     })
 
     it('clicking Verified card sets activeTab to "verified" and filters table to approved users', async () => {
@@ -440,7 +452,7 @@ describe('AdminDashboard Component Tests', () => {
 
       expect(mockActiveTab.value).toBe('verified')
       expect(screen.getByText('Alice Driver')).toBeInTheDocument()
-      expect(screen.getByText('Charlie Admin')).toBeInTheDocument()
+      expect(screen.queryByText('Charlie Admin')).not.toBeInTheDocument()
       expect(screen.getByText('Eve Suspended')).toBeInTheDocument()
       expect(screen.queryByText('Bob Shipper')).not.toBeInTheDocument()
       expect(screen.queryByText('Dave Rejected')).not.toBeInTheDocument()
@@ -492,6 +504,28 @@ describe('AdminDashboard Component Tests', () => {
       const rejectedCard = screen.getAllByText('Rejected').find(el => el.closest('.cursor-pointer'))!.closest('.cursor-pointer')!
       expect(rejectedCard.className).toContain('ring-2')
       expect(rejectedCard.className).toContain('ring-destructive')
+    })
+  })
+
+  describe('Non-Supreme Agent Card Visibility', () => {
+    it('hides status-based cards (Unverified, Verified, Pending, Rejected, Suspended) for non-supreme agents', () => {
+      mockAuthUser.value = {
+        id: 'agent-1',
+        name: 'John Agent',
+        email: 'john@roadlancer.com',
+        role: 'admin',
+        isSupreme: false,
+      }
+      renderDashboard()
+
+      expect(screen.getByText('Total Users')).toBeInTheDocument()
+      expect(screen.getAllByText('Drivers').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('Shippers').length).toBeGreaterThanOrEqual(1)
+      expect(screen.queryByText('Unverified')).not.toBeInTheDocument()
+      expect(screen.queryByText('Verified')).not.toBeInTheDocument()
+      expect(screen.queryByText('Pending')).not.toBeInTheDocument()
+      expect(screen.queryByText('Rejected')).not.toBeInTheDocument()
+      expect(screen.queryByText('Suspended')).not.toBeInTheDocument()
     })
   })
 })

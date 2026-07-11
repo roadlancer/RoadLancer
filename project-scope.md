@@ -27,6 +27,7 @@ India's trucking industry lacks an organized marketplace, enabling **intermediar
 | **Truck Driver** | Individual driver looking for shipment jobs |
 | **Shipper** | Individual or business needing goods transported |
 | **Admin** | Platform administrator managing users and shipments |
+| **Supreme Admin** | Admin with `isSupreme=true` flag; can deactivate/reactivate other admin agents |
 
 ---
 
@@ -84,6 +85,7 @@ Created → Bidding Open → Bid Accepted → In Transit → Delivered → Compl
 - **Driver Dashboard:** Available shipments, my bids, active trips, earnings history
 - **Shipper Dashboard:** Create shipment, track active shipments, shipment history
 - **Admin Dashboard:** Manage users, view all shipments, platform analytics
+- **Agent Management (Supreme Admin only):** Deactivate admin agents to unassign their support tickets
 
 ### 6. User Verification System
 
@@ -99,13 +101,21 @@ Created → Bidding Open → Bid Accepted → In Transit → Delivered → Compl
 - Admin support desk with ticket management
 - Ticket sorting by newest/oldest/priority/status
 
+### 8. Agent Deactivation (Supreme Admin)
+
+- Only supreme admins (`isSupreme=true`) can deactivate/reactivate admin agents
+- When deactivated: agent's sessions revoked, `suspended=true`
+- All tickets assigned to that agent have `[ASSIGNED_TO:agentId|agentName]` prefix cleared from `adminNotes`
+- Agents are filtered out of the support agent dropdown when suspended
+- Deactivation dialog requires confirmation
+
 ---
 
 ## Simplified Scope (College Project)
 
 ### What's Included ✅
 - User registration & login (email/password)
-- Role-based access (Driver, Shipper, Admin)
+- Role-based access (Driver, Shipper, Admin, Supreme Admin)
 - Database-backed sessions (Better Auth)
 - Shipment CRUD (create, view, update status)
 - AI price estimation (rule-based engine, no LLM)
@@ -149,6 +159,7 @@ Created → Bidding Open → Bid Accepted → In Transit → Delivered → Compl
 | phone | string | Contact number (nullable) |
 | suspended | boolean | Account suspension flag |
 | status | enum | pending, approved, rejected |
+| is_supreme | boolean | Supreme admin flag (default false) |
 
 #### Sessions Table
 | Column | Type | Notes |
@@ -255,6 +266,8 @@ Created → Bidding Open → Bid Accepted → In Transit → Delivered → Compl
 | POST | `/api/admin/users/{id}/unsuspend` | Unsuspend a user |
 | POST | `/api/admin/users/{id}/approve` | Approve a pending user |
 | POST | `/api/admin/users/{id}/reject` | Reject a pending user |
+| POST | `/api/admin/users/{id}/deactivate-agent` | Deactivate an admin agent (supreme admin only) |
+| POST | `/api/admin/users/{id}/activate-agent` | Reactivate a deactivated admin agent (supreme admin only) |
 
 ### Verification (FastAPI - Port 8000)
 | Method | Route | Purpose |
@@ -361,6 +374,8 @@ Total Price = (Distance × Rate/km) + Weight Charge + Vehicle Multiplier + Goods
 | Shipper | shipper@roadlancer.com | shipper123 |
 
 > **Note:** Seeded via `auth-server/seed.ts`. All have `status=approved`.
+>
+> To make a user supreme admin: `UPDATE "user" SET "isSupreme" = true WHERE id = '<user-id>';`
 
 ---
 
@@ -375,12 +390,12 @@ Total Price = (Distance × Rate/km) + Weight Charge + Vehicle Multiplier + Goods
 ### Unit Tests (Vitest)
 - **Framework:** Vitest + @testing-library/vue + jsdom
 - **Location:** `frontend/src/views/__tests__/*.spec.ts`
-- **Total tests:** 27 (22 passing, 5 pre-existing failures in AdminDashboard)
+- **Total tests:** 72 (all passing)
 
 ### Test Commands
 ```bash
-bun run test:e2e           # Run E2E tests
-bun run test:unit          # Run unit tests
+bun run test:e2e           # Run E2E tests (52 tests)
+bun run test:unit          # Run unit tests (72 tests, all passing)
 ```
 
 ---
@@ -394,11 +409,12 @@ bun run test:unit          # Run unit tests
 - User verification flow (document submission + admin review)
 - Support ticket system + inbound email webhook
 - All dashboards (Driver, Shipper, Admin)
+- Agent deactivation (Supreme Admin can deactivate agents, unassigns tickets)
 - E2E test suite (52 tests)
-- Unit test suite (27 tests)
+- Unit test suite (72 tests, all passing)
 
 ### In Progress / Known Issues
-- Pre-existing unit test failures in AdminDashboard (duplicate text element queries)
+- (none)
 
 ### Not Implemented
 - OTP verification (mock only, no real SMS)

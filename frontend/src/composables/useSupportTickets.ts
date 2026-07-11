@@ -95,15 +95,10 @@ export function useSupportAgents() {
   return computed<SupportAgent[]>(() => {
     const base: SupportAgent[] = [
       { id: '', name: 'Unassigned (No Agent)' },
-      { id: 'admin-lead', name: 'Sarah Jenkins (Support Lead)' },
-      { id: 'admin-dispatch', name: 'Rahul Sharma (Dispatch Specialist)' },
-      { id: 'admin-kyc', name: 'Pooja Nair (KYC Verification Team)' },
-      { id: 'admin-billing', name: 'Vikram Mehta (Billing & Accounts)' },
-      { id: 'admin-current', name: 'Admin User (System Administrator)' },
     ]
     if (adminUsers.value) {
       const dbAdmins = adminUsers.value
-        .filter((u) => u.role === 'admin' && !base.some((b) => b.id === u.id))
+        .filter((u) => u.role === 'admin' && !u.suspended)
         .map((u) => ({ id: u.id, name: `${u.name} (${u.email})` }))
       return [...base, ...dbAdmins]
     }

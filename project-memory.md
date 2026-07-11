@@ -34,14 +34,15 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Styling:** Tailwind CSS 4
 - **UI Library:** shadcn-vue (reka-ui primitives, Lucide icons via `@lucide/vue`)
 - **Theme:** Teal (primary: `oklch(0.511 0.096 186.391)`)
-- **Form Validation:** Zod v4 schemas + manual `safeParse()` across all form inputs (`LoginView.vue`, `GetValidated.vue`, etc. — no vuehookform)
+- **Form Validation:** Zod v4 schemas + manual `safeParse()` across all form inputs (`LoginView.vue`, `GetValidated.vue`, etc. — no vuehookform) with `max()` length constraints
+- **XSS Sanitization:** DOMPurify (`@/lib/sanitize.ts`) — `sanitize()` for HTML body content, `sanitizeText()` for plain text (subjects, names, addresses). Applied at composable query/mutation layer (`useSupportTickets.ts`, `useShipments.ts`, `useCreateShipment.ts`) and form emit layer (`ReplyForm.vue`).
 - **Auth Client:** `better-auth` vanilla client (`baseURL: ''` for Vite proxy)
 - **HTTP Client:** Axios (`@/lib/api.ts`) — centralized instance with Bearer token interceptor
 - **Data Fetching:** TanStack Query (`@tanstack/vue-query`) — automatic caching, refetching, mutations
 - **Router:** Vue Router with auth navigation guards
 - **Composables:** `useAuth()`, `useVerificationStatus()`, `useAdminUsers()`, `usePendingUsers()`, `useVerificationList()`, `useSupportTickets()`
 - **Components:** Button, Input, Label, Card, Avatar, Badge, Separator, Tabs, Checkbox, Alert, RadioGroup, UsersTable, TicketsTable (`@tanstack/vue-table` sorting & pagination)
-- **Layout:** Sticky NavBar (left-aligned brand & Dashboard links, uniform h-10 primary buttons, Help & Support trigger restricted strictly to authenticated users), Footer, Admin Dashboard & Support Desk (shared navigation banner, 7 Lucide KPI cards, search/filter headers, extracted table components, dedicated ticket resolution desk at `/admin/support/:id`), centered login card with role selection
+- **Layout:** Sticky NavBar (left-aligned brand & Dashboard links, uniform h-10 primary buttons, Help & Support trigger restricted strictly to authenticated users), Footer, Admin Dashboard & Support Desk (shared navigation banner, 8 Lucide KPI cards for supreme admins / 3 for agents, search/filter headers, extracted table components, dedicated ticket resolution desk at `/admin/support/:id`), Agent Management page (`/admin/agents`), centered login card with role selection
 - **Port:** 5173
 
 ---
@@ -74,6 +75,8 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Landing Page | Public marketing page | Product introduction for new users, no auth required |
 | RoadLancer Brand | Logged-out only | Hidden when logged in to reduce visual clutter |
 | Footer | Removed | Simplified layout, no legal/policy requirements for college project |
+| XSS Prevention | DOMPurify | `sanitize()` for HTML bodies, `sanitizeText()` for plain text; applied at composable data layer |
+| Input Length Limits | Prisma `@db.VarChar` + Pydantic `Field(max_length=...)` + HTML `maxlength` + Zod `.max()` | Three-layer defense: database, backend API, frontend form |
 
 ---
 
@@ -97,22 +100,26 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 5.7 | Support Desk Enhancements: TanStack Table Sorting & Pagination, Interactive Inline Agent Assignment (`[ASSIGNED_TO]`), Agent Filtering, & Dedicated Ticket Detail Page (`/admin/support/:id`) | ✅ Complete |
 | Phase 5.8 | Table Customization & Verification Safeguards: Max 8 Columns Checkbox Chooser, Inline Status/Category Selects, & Approved Verification Reset Lock (`[ASSIGNED_TO]` & AI score data integrity) | ✅ Complete |
 | Phase 5.9 | Support Desk Reply Threading: Dedicated ticket_replies Model (`senderRole` & `senderType` for `agent`/`customer` distinction), Auto-creation via Raw SQL (`ALTER TABLE`), Admin & User Reply Endpoints (`POST /replies`), and Interactive Discussion & Reply Form (`AdminTicketDetailView.vue`) | ✅ Complete |
+| Phase 5.10 | Security Hardening: DOMPurify XSS sanitization (`@/lib/sanitize.ts`), Pydantic `Field(max_length=...)` on all request models, Prisma `@db.VarChar(...)` on `support_tickets` & `ticket_replies`, HTML `maxlength` + Zod `.max()` on frontend forms, `bodyHtml` column on `ticket_replies` | ✅ Complete |
+| Phase 5.11 | Agent Management: `isSupreme` flag on user model, create/deactivate/activate agent endpoints (supreme admin only), separate admin/agent login page (`/admin/login`), agent-scoped ticket filtering (non-supreme agents only see assigned tickets), Unverified stats card, status filter cards hidden for non-supreme agents | ✅ Complete |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
-### Overall Completion: **~95%**
+### Overall Completion: **~97%**
 
 | Area | Completion | Notes |
 |------|------------|-------|
-| Auth System | 100% | Better Auth, login, sessions, role-based access, authenticated support trigger |
-| Backend Routes | 95% | 35+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET) |
+| Auth System | 100% | Better Auth, login, sessions, role-based access, authenticated support trigger, separate admin/agent login page |
+| Backend Routes | 100% | 40+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate). All Pydantic request models enforce `max_length` constraints. |
 | AI Pricing Engine | 100% | Rule-based with all factors |
-| Database Schema | 100% | 9 models implemented |
-| Frontend Views | 95% | 14 views (all dashboards, login, register, home, shipment detail, verification with AI checked status lock, admin support desk with agent filtering, admin ticket detail view with assign-to-me) |
-| Frontend Composables | 100% | 13 composables including `useSupportAgents()` for unified agent management |
-| Frontend Components | 100% | 10 components (`UsersTable`, `TicketsTable` with `@tanstack/vue-table` sorting, pagination, Max 8 column visibility popover, and direct inline status/category/agent selects) |
+| Database Schema | 100% | 11 models implemented (incl. `support_tickets` with `VarChar` limits & `ticket_replies` with `bodyHtml`, `isSupreme` field on user model) |
+| Security | 100% | DOMPurify XSS sanitization on all user-supplied content, three-layer input length enforcement (Prisma VarChar → Pydantic max_length → HTML maxlength/Zod .max()) |
+| Frontend Views | 97% | 16 views (all dashboards, login (driver/shipper), admin/agent login (`/admin/login`), home, shipment detail, verification with AI checked status lock, admin support desk with agent filtering, admin ticket detail view with assign-to-me, agent management) |
+| Frontend Composables | 100% | 14 composables including `useSupportAgents()`, `useAdminAgents()` for unified agent management (real DB agents only, no dummy data) |
+| Frontend Components | 100% | 11 components (`UsersTable`, `AgentsTable`, `TicketsTable` with `@tanstack/vue-table` sorting, pagination, Max 8 column visibility popover, and direct inline status/category/agent selects) |
 | Shipment Flow | 100% | Create → Price → Bidding → Transit |
-| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI & dedicated resolution page |
-| Testing | 96% | Component tests (primary tool: AdminDashboard, TicketsTable inline assignment, and 4 dedicated TicketDetail/Reply component suites) + Full-Stack E2E tests (critical integration paths including `ticket-detail-page.spec.ts`) |
+| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI & dedicated resolution page, agent-scoped ticket filtering |
+| Agent Management | 100% | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility, separate login page |
+| Testing | 97% | 72 component tests passing (AdminDashboard: 29 tests incl. unverified card & non-supreme visibility, TicketsTable: 14 tests, ReplyForm: 10 tests, TicketDetail, UpdateTicket, ReplyThread) |
 
 ### What's Missing
 
@@ -122,7 +129,6 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | **Charts/Analytics** | No chart library installed | 🟢 Nice to have |
 | **Phone Login** | LoginView has phone tab but backend only supports email | 🟢 Nice to have |
 | **Bidding Countdown** | `bidding_ends_at` field exists but no UI timer | 🟢 Nice to have |
-| **Rejected Count Endpoint** | Documented but not implemented | 🟢 Nice to have |
 | **Sample Seed Data** | No sample shipments/bids for demo | 🟢 Nice to have |
 
 ### Testing Strategy
@@ -153,9 +159,9 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 
 ### Component Test Status
 - **Framework:** Vitest + @testing-library/vue + jsdom
-- **Test runner:** `vitest run` (single run) or `vitest` (watch mode)
+- **Test runner:** `bunx vitest run` (single run) or `bunx vitest` (watch mode)
 - **Location:** `frontend/src/views/__tests__/*.spec.ts` and `frontend/src/**/*.spec.ts`
-- **Current suites:** AdminDashboard (28 tests), TicketsTable & inline assignment, TicketDetail, UpdateTicket, ReplyThread, ReplyForm (100% passing across 70+ tests)
+- **Current suites:** AdminDashboard (29 tests — includes unverified card & non-supreme visibility), TicketsTable & inline assignment (14 tests), ReplyForm (10 tests), TicketDetail, UpdateTicket, ReplyThread (72 tests total, all passing)
 - **Test setup:** `frontend/vitest.config.ts` (jsdom environment)
 
 ---
@@ -190,8 +196,8 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 ### Running Tests
 ```bash
 # From frontend/ directory
-bun run test:unit          # Single run (CI mode)
-bun run test:unit:watch    # Watch mode (development)
+bunx vitest run          # Single run (CI mode)
+bunx vitest              # Watch mode (development)
 ```
 
 ### Test File Location
@@ -425,13 +431,15 @@ Authentication uses **Better Auth** (Node.js) for session management and **FastA
 ### Auth Flow
 ```
 Vue Frontend (5173)
-  ↓ User selects role (driver/shipper)
+  ↓ User navigates to /login (Driver/Shipper) or /admin/login (Admin/Agent)
+  ↓ Driver/Shipper: selects role via radio buttons
+  ↓ Admin/Agent: directly enters credentials
   ↓ signIn.email({ email, password, name: role })
   ↓ → Vite proxy → localhost:3000/api/auth/sign-in/email
 Better Auth Server (3000)
   ↓ Validates credentials against PostgreSQL
   ↓ Creates session record with opaque token
-  ↓ Returns { token, user: { id, name, email, role, phone } }
+  ↓ Returns { token, user: { id, name, email, role, phone, isSupreme } }
   ↓ Sets HttpOnly session cookie
 Frontend receives response
   ↓ Stores token via authClient.getSession() (reads cookie)
@@ -454,7 +462,7 @@ FastAPI dependency: get_current_user()
 ### Database Schema (Auth Tables)
 | Table | Purpose |
 |-------|---------|
-| `user` | id, name, email, emailVerified, image, role (enum), phone, suspended (bool), status (enum: pending/approved/rejected) |
+| `user` | id, name, email, emailVerified, image, role (enum), phone, suspended (bool), isSupreme (bool, default false), status (enum: pending/approved/rejected) |
 | `session` | id, token (unique), expiresAt, userId, ipAddress, userAgent |
 | `account` | OAuth provider accounts (not used for email/password) |
 | `verification` | Email verification tokens |
@@ -463,8 +471,10 @@ FastAPI dependency: get_current_user()
 | Table | Purpose |
 |-------|---------|
 | `shipments` | id, title, description, goodsCategory, weightKg, vehicleType, pickupAddress, dropoffAddress, distanceKm, shipperBudget, status, shipperId, assignedDriverId, aiFloorPrice, aiEstimatedMin, aiEstimatedMax, isForcedPrice, createdAt, updatedAt |
-| `bids` | id, amount, message, shipmentId, driverId, status (pending/accepted/rejected/withdrawn), createdAt, updatedAt |
+| `bids` | id, amount, message (`VarChar(1000)`), shipmentId, driverId, status (pending/accepted/rejected/withdrawn), createdAt, updatedAt |
 | `user_verifications` | id, userId (unique), driver fields (nullable), shipper fields (nullable), status (enum: pending/approved/rejected), reviewedBy, reviewedAt, rejectionReason, timestamps |
+| `support_tickets` | id, ticketNumber (`VarChar(20)`, unique), senderEmail (`VarChar(255)`), senderName (`VarChar(100)`), subject (`VarChar(200)`), message (`VarChar(5000)`), category (`VarChar(50)`), status (`VarChar(20)`), priority (`VarChar(20)`), source (`VarChar(20)`), userId, adminNotes (`VarChar(2000)`), createdAt, updatedAt |
+| `ticket_replies` | id, ticketId (FK → support_tickets), senderName (`VarChar(100)`), senderRole (`VarChar(20)`: admin/user), senderType (`VarChar(20)`: agent/customer), message (`VarChar(5000)`), bodyHtml (`VarChar(10000)`, optional — sanitized HTML), createdAt |
 
 ### Shipment Status Flow
 ```
@@ -480,6 +490,10 @@ assigned → cancelled (only by shipper)
 - **Access:** `user.role` available in frontend after `fetchSession()`
 - **Login:** User selects role via radio buttons before signing in
 - **Admin access:** `admin@roadlancer.com` → `/admin` dashboard with user management
+- **`isSupreme` flag:** Boolean on user model — grants supreme admin privileges (agent management, status filter cards on dashboard). Set to `true` for `QzLwskaA83cgHMKnAZ45r1U76bYXZSLl` in DB.
+- **Agent management:** Supreme admins can create/deactivate/activate admin agents via `/admin/agents` page. Agents have `role: admin` but `isSupreme: false`.
+- **Agent-scoped tickets:** Non-supreme agents only see tickets assigned to them via `[ASSIGNED_TO:agentId|]` tag in `adminNotes`.
+- **Separate login pages:** Regular login (`/login`) for Driver/Shipper; Admin/Agent login (`/admin/login`) for admin role.
 
 ### Frontend Auth Implementation
 - **Client:** `better-auth/vue` `createAuthClient({ baseURL: '' })` — empty baseURL for Vite proxy
@@ -488,7 +502,7 @@ assigned → cancelled (only by shipper)
   - `meta.requiresAuth` → redirects to `/login` if not authenticated
   - `meta.guest` → redirects to `/` if already authenticated
   - `meta.role` → redirects to `/` if user role doesn't match
-- **Login:** Role radio buttons → `signIn.email()` → `fetchSession()` → redirects to `/driver`, `/admin`, or `/shipper` based on `user.role` (radio selection is ignored for routing)
+- **Login:** Role radio buttons → `signIn.email()` → `fetchSession()` → redirects to `/driver`, `/admin`, or `/shipper` based on `user.role` (radio selection is ignored for routing). Regular login (`/login`) for Driver/Shipper only; Admin/Agent login (`/admin/login`) for admin role.
 - **Sign out:** `useAuth().signOut()` → `api.post('/auth/sign-out')` → clears user → `window.location.href = '/login'`
 - **Verification check:** NavBar + dashboards use `useVerificationStatus()` composable — shows "Get Validated" button if not verified
 
@@ -525,15 +539,18 @@ assigned → cancelled (only by shipper)
 
 ### Backend Routes
 - **`/api/auth`** — Better Auth server (Node.js on port 3000)
-- **`/api/admin/*`** — Admin user management (list, suspend, approve, reject)
+- **`/api/admin/*`** — Admin user management (list, suspend, approve, reject) + agent management (supreme admin only)
   - `GET /api/admin/users` — list all users (with search, role filter, status filter)
   - `GET /api/admin/users/pending/list` — list pending users
   - `GET /api/admin/users/pending/count` — count pending users
   - `GET /api/admin/users/rejected/count` — count rejected users
-  - `POST /api/admin/users/{id}/suspend` — suspend a user (with reason)
+  - `POST /api/admin/users/{id}/suspend` — suspend a user (clears `[ASSIGNED_TO]` from tickets)
   - `POST /api/admin/users/{id}/unsuspend` — unsuspend a user
   - `POST /api/admin/users/{id}/approve` — approve a pending user
   - `POST /api/admin/users/{id}/reject` — reject a pending user (with reason)
+  - `POST /api/admin/users/{id}/deactivate-agent` — deactivate admin agent (supreme admin only, clears `[ASSIGNED_TO]` from tickets)
+  - `POST /api/admin/users/{id}/activate-agent` — activate admin agent (supreme admin only)
+  - `POST /api/admin/users/create-agent` — create new admin agent account (supreme admin only, with scrypt password hashing)
 - **`/api/verification/*`** — Verification submit (driver/shipper), status, admin review
   - `GET /api/verification/status` — get current user's verification status
   - `POST /api/verification/submit/driver` — submit driver verification details
@@ -556,14 +573,16 @@ assigned → cancelled (only by shipper)
   - `GET /api/shipments/{id}/bids/count` — count bids on a shipment
   - `POST /api/shipments/{id}/bids/{bid_id}/accept` — accept a bid (shipper only)
   - `POST /api/shipments/estimate-price` — AI price estimation (no auth required)
-- **`/api/support/*`** — Support tickets & inbound email webhook (sorted newest first by default, with `sort_field` and `sort_order` support for TanStack Table)
-  - `POST /api/support/inbound-email` — inbound email webhook simulation (auto-creates tickets, links to sender account if matched)
-  - `POST /api/support/tickets` — create web support ticket (`user: dict = Depends(get_current_user)`)
+- **`/api/support/*`** — Support tickets & inbound email webhook (sorted newest first by default, with `sort_field` and `sort_order` support for TanStack Table). Agent-scoped filtering for non-supreme agents via `[ASSIGNED_TO:agentId|]` tag. All string inputs validated with Pydantic `Field(max_length=...)` constraints.
+  - `POST /api/support/inbound-email` — inbound email webhook simulation (auto-creates tickets, links to sender account if matched). Enforces: subject ≤200, body ≤5000, senderName ≤100, email ≤255.
+  - `POST /api/support/tickets` — create web support ticket (`user: dict = Depends(get_current_user)`). Enforces: subject ≤200, message ≤5000.
   - `GET /api/support/tickets/my` — get current user's tickets (supports status/source filters + search + column sorting via `sort_field`/`sort_order`)
-  - `GET /api/support/admin/list` — list all support tickets (admin only, supports filters + search + column sorting via `sort_field`/`sort_order`)
-  - `GET /api/support/admin/count` — get KPI counts (`total`, `open`, `in_progress`, `resolved`, `closed`, `inbound_email`, `web`)
-  - `GET /api/support/admin/{ticket_id}` — get single support ticket by ID or `ticketNumber` (admin only)
-  - `PUT /api/support/admin/{ticket_id}/status` — update ticket workflow status, priority ranking, and internal resolution notes (`adminNotes`) including assigned agent metadata (admin only)
+  - `GET /api/support/admin/list` — list all support tickets (admin only, supports filters + search + column sorting via `sort_field`/`sort_order`). Non-supreme agents only see tickets assigned to them via `[ASSIGNED_TO:agentId|]` tag.
+  - `GET /api/support/admin/count` — get KPI counts (`total`, `open`, `in_progress`, `resolved`, `closed`, `inbound_email`, `web`). Non-supreme agents see only their assigned ticket counts.
+  - `GET /api/support/admin/{ticket_id}` — get single support ticket by ID or `ticketNumber` (admin only). Non-supreme agents can only access their assigned tickets.
+  - `PUT /api/support/admin/{ticket_id}/status` — update ticket workflow status, priority ranking, and internal resolution notes (`adminNotes ≤2000`) including assigned agent metadata (admin only)
+  - `POST /api/support/admin/{ticket_id}/replies` — admin reply (message ≤5000, senderName ≤100)
+  - `POST /api/support/tickets/{ticket_id}/replies` — user reply (message ≤5000)
 
 ### AI Pricing Engine
 
@@ -639,6 +658,7 @@ Total Price = (Distance × Rate/km) + Weight Charge + Vehicle Multiplier + Goods
 - **`useAdminUsers()`** — TanStack Query for admin user list + suspend mutation (shared by AdminDashboard)
 - **`usePendingUsers()`** — TanStack Query for pending users + approve/reject mutations (shared by PendingUsers)
 - **`useVerificationList()`** — TanStack Query for admin verification list + approve/reject mutations (shared by AdminVerificationReview)
+- **`useAdminAgents()`** — TanStack Query for admin agent list + create/deactivate/activate mutations (real DB agents only, no dummy data)
 - **`useShipments()`** — TanStack Query for shipment list (drivers see active, shippers see all their shipments)
 - **`useCreateShipment()`** — Mutation for creating new shipments
 - **`useShipmentDetail()`** — TanStack Query for single shipment details
@@ -750,9 +770,9 @@ export function useVerificationStatus() {
 
 ### Layout Structure
 - **App.vue:** `min-h-screen flex flex-col bg-background` → NavBar → `<main class="flex-1">` (no Footer)
-- **NavBar:** Sticky (`sticky top-0 z-50 backdrop-blur-md`), role-based dashboard link, sign out button, RoadLancer brand only visible when logged out, Dashboard text font size increased
+- **NavBar:** Sticky (`sticky top-0 z-50 backdrop-blur-md`), role-based dashboard link, sign out button, RoadLancer brand only visible when logged out, Dashboard text font size increased. Admin nav links cleaned up — only Dashboard and Document Verification remain (Support Desk and Agent Mgmt moved to AdminDashboard header).
 - **Footer:** Removed from all pages
-- **Login:** Centered card with role radio buttons, tabs (email/phone), social login
+- **Login:** Centered card with role radio buttons, tabs (email/phone), social login. Regular login (`/login`) for Driver/Shipper only; Admin/Agent login (`/admin/login`) for admin role. "Admin / Agent? Login here" link at bottom of regular login page.
 - **Home:** Public marketing landing page (no auth required)
 
 ### Theme (Teal)
@@ -765,7 +785,8 @@ export function useVerificationStatus() {
 | Route | Component | Access |
 |-------|-----------|--------|
 | `/` | HomeView (Marketing Landing) | Public (all users) |
-| `/login` | LoginView | Guest only |
+| `/login` | LoginView (Driver/Shipper only) | Guest only |
+| `/admin/login` | AdminLoginView (Admin/Agent) | Guest only |
 | `/driver` | DriverDashboard | Driver only |
 | `/shipper` | ShipperDashboard | Shipper only |
 | `/shipments/:id` | ShipmentDetailView | Authenticated users |
@@ -776,6 +797,7 @@ export function useVerificationStatus() {
 | `/admin/verifications` | AdminVerificationReview | Admin only |
 | `/admin/support` | AdminSupportDesk | Admin only |
 | `/admin/support/:id` | AdminTicketDetailView | Admin only |
+| `/admin/agents` | AdminAgentManagement | Supreme admin only |
 
 ---
 
@@ -819,13 +841,14 @@ export function useVerificationStatus() {
 
 ## 🔑 8. Default Accounts
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@roadlancer.com | admin123 |
-| Driver | driver@roadlancer.com | driver123 |
-| Shipper | shipper@roadlancer.com | shipper123 |
+| Role | Email | Password | Notes |
+|------|-------|----------|-------|
+| Admin | admin@roadlancer.com | admin123 | `isSupreme=true` |
+| Driver | driver@roadlancer.com | driver123 | |
+| Shipper | shipper@roadlancer.com | shipper123 | |
+| Agent | john@roadlancer.com | johndoe17# | `role: admin`, `isSupreme=false` — sub-agent created via Agent Management |
 
-> **Note:** These three accounts are seeded via `auth-server/seed.ts`. All have `status=approved` by default. Old test users must be deleted from DB if found.
+> **Note:** Admin and Agent accounts have `role=admin`. The three base accounts are seeded via `auth-server/seed.ts`. Agent account created via `/api/admin/users/create-agent` endpoint. All have `status=approved` by default. Old test users must be deleted from DB if found.
 
 ---
 
@@ -838,6 +861,9 @@ export function useVerificationStatus() {
 - **Backend `pyproject.toml`:** Missing `[tool.setuptools.packages]` — `pip install -e .` broken; install deps individually
 - **Chrome autofill:** Use `autocomplete="new-password"` on inputs to prevent yellow background
 - **Auth server startup:** Must use `setsid` (not `< /dev/null`) to keep Hono alive — `process.stdin.resume()` fails when stdin is redirected
+- **Backend startup:** Must use `setsid` and plain `uvicorn app.main:app --port 8000` (without `--reload`) — with reload it starts then shuts down immediately.
+- **Backend password hashing (scrypt):** better-auth uses scrypt (N=16384, r=16, p=1, dkLen=64). Salt is 16 random bytes hex-encoded, then the **hex string itself** (not decoded bytes) is passed as UTF-8 to scrypt. Python must match: `salt_hex.encode("utf-8")` as salt input, NOT `bytes.fromhex(salt_hex)`. Hash format: `{hex_salt}:{hex_key}`.
+- **Backend Prisma client must be regenerated** (`prisma generate`) after schema changes for Python client to recognize new fields like `isSupreme`.
 - **Vite proxy order:** Specific routes (e.g., `/api/auth`) must come before catch-all routes. If using a single `/api` → backend catch-all, ensure auth routes are handled separately. The auth server (port 3000) and backend (port 8000) share the same `/api` prefix via Vite proxy.
 - **Vite cache:** Clear `node_modules/.vite` when changing imports (e.g., lucide-vue-next → @lucide/vue)
 - **TypeScript schema indexing:** Cast `schema.shape` to `Record<string, any>` when indexing with string
@@ -847,7 +873,10 @@ export function useVerificationStatus() {
 - **401 interceptor login page:** Must check `window.location.pathname !== '/login'` before redirecting — prevents redirect loop when role-mismatch sign-out triggers a 401 during verification query
 - **Prisma Python (`prisma-client-py`) Limitations:** Does not support `select` or `include` keyword arguments in `find_unique` or `find_many`. Use `db.query_raw(...)` when selective projection or joins are required, and ensure raw date/time strings from SQL queries are properly handled before calling `.isoformat()`.
 - **Prisma Python Enums:** Generated models wrap enum fields in Python `Enum` objects; access them via `.value` when comparing strings or serializing to JSON.
-- **Admin Dashboard Card Stats / Tab Filtering:** In `useAdminUsers()`, always fetch all users without filtering by `role` on the backend so that client-side stats across all 8 summary cards never drop to 0 when clicking an individual card.
+- **Admin Dashboard Card Stats / Tab Filtering:** In `useAdminUsers()`, always fetch all users without filtering by `role` on the backend so that client-side stats across all 8 summary cards never drop to 0 when clicking an individual card. Admin users are excluded client-side in `AdminDashboard.vue` (`filteredUsers` and `stats` computed).
+- **Admin Users Excluded from User Management:** Admin users (including agents) are filtered out of the user table and stats cards in `AdminDashboard.vue`. Admins are managed via the dedicated Agent Management page (`/admin/agents`) for supreme admins only.
+- **Unverified Stats Card:** The "Unverified" card counts users with `verification_status === 'none'` (registered but never submitted verification documents). This is computed client-side from the user list — no separate API endpoint needed.
+- **Non-Supreme Agent Card Visibility:** Status-based filter cards (Unverified, Verified, Pending, Rejected, Suspended) are only visible to supreme admins (`user?.isSupreme`). Non-supreme agents only see Total Users, Drivers, and Shippers cards.
 - **No Direct Profile Edits for Admins:** For compliance and traceability, Admins should never arbitrarily edit verified driver or shipper profile data directly on the dashboard. Changes must strictly follow a user-initiated support ticket/email trail.
 - **Strict Soft Deletion / Suspension:** Never implement hard delete (`DELETE FROM ...`) endpoints for user accounts or verification records. Always use soft deletion (such as setting verification status to `rejected` or account status to `suspended`) to preserve audit trails, fraud logs, and historical traceability.
 - **Profile Edit Request Workflow:** When a verified driver or shipper needs to update their profile data, they must click "Request Profile Edit / Update" on their verification page and provide a support ticket reference / reason. This unlocks their form, submits an edit request (`isEditRequest: true`), sets their verification status back to `pending`, and flags the reason as `[PROFILE EDIT REQUEST]` for Admin review. When Admin approves, the user's main `user` table record (`name` and `phone`) is automatically synchronized.
@@ -887,8 +916,8 @@ export function useVerificationStatus() {
 | `backend/app/middleware.py` | RequestLoggingMiddleware, RateLimitMiddleware |
 | `backend/app/database.py` | Prisma client initialization |
 | `backend/app/routes/auth.py` | Session-based auth via Bearer token → DB lookup |
-| `backend/app/routes/admin.py` | Admin auth dependency (`get_admin_user`) |
-| `backend/app/routes/users.py` | User management endpoints — list, suspend, pending, approve, reject |
+| `backend/app/routes/admin.py` | Admin auth dependency (`get_admin_user`, `get_supreme_admin_user`) |
+| `backend/app/routes/users.py` | User management endpoints — list, suspend, pending, approve, reject + agent management (create/deactivate/activate) |
 | `backend/app/routes/verification.py` | Verification submit (driver/shipper), status, admin review |
 | `backend/app/routes/support.py` | Support ticket endpoints (with sort_by support for newest/oldest/priority/status) & inbound email webhook parser simulation |
 | `backend/app/routes/shipments.py` | Shipment CRUD, bids, status updates, AI pricing |
@@ -909,6 +938,7 @@ export function useVerificationStatus() {
 | `frontend/src/composables/useUpdateShipmentStatus.ts` | TanStack Query composable — status update mutation |
 | `frontend/src/composables/usePriceEstimate.ts` | TanStack Query composable — AI price estimation mutation |
 | `frontend/src/composables/useSupportTickets.ts` | TanStack Query composable — support tickets (`sort_field`/`sort_order` sorting, `useAdminTicket`), inbound email simulation, assigned agent parsers (`[ASSIGNED_TO]`), and admin helpdesk |
+| `frontend/src/composables/useAdminAgents.ts` | TanStack Query composable — admin agent list, create/deactivate/activate mutations (real DB agents only) |
 | `frontend/src/lib/api.ts` | Axios instance with Bearer token interceptor and 401 redirect |
 | `frontend/src/components/NavBar.vue` | Sticky nav — RoadLancer brand only when logged out, Help & Support trigger restricted strictly to authenticated users |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
@@ -921,17 +951,20 @@ export function useVerificationStatus() {
 | `frontend/src/components/BidSubmissionDialog.vue` | Driver bid submission with floor price validation |
 | `frontend/src/components/BidReviewDialog.vue` | Shipper bid review/accept interface |
 | `frontend/src/components/SupportEmailSimulatorModal.vue` | Interactive helpdesk modal for simulating inbound emails to support@roadlancer.com and viewing tickets |
-| `frontend/src/views/LoginView.vue` | Role radio buttons, tabs, social login, Zod validation |
+| `frontend/src/views/LoginView.vue` | Role radio buttons, tabs, social login, Zod validation (Driver/Shipper only). "Admin / Agent? Login here" link at bottom. |
 | `frontend/src/views/GetValidated.vue` | Multi-section accordion verification forms for Driver (DL, RC, Insurance, PUC) and Shipper (GST, PAN, Reg) with Base64 photo uploads |
 | `frontend/src/views/AdminVerificationReview.vue` | Admin review interface displaying expanded profile fields, document inspection lightbox, and rejection reasons |
 | `frontend/src/views/HomeView.vue` | Public marketing landing page — Hero, How It Works, Features, Stats, Trust Signals, CTA |
 | `frontend/src/views/DriverDashboard.vue` | Driver dashboard — assigned shipments tab, bid history, external links |
 | `frontend/src/views/ShipperDashboard.vue` | Shipper dashboard — KPIs, shipment list, create/review buttons |
 | `frontend/src/views/ShipmentDetailView.vue` | Shipment detail — status timeline, bid management, transit actions, AI price estimate |
-| `frontend/src/views/AdminDashboard.vue` | Admin dashboard — compact stats cards, role filtering & sorting selects, user table, forced price badge |
-| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view matching AdminDashboard UI (shared gradient header with user management link, 7 Lucide KPI cards, unified search/filter header, `@tanstack/vue-table` sorting sync, and modal inspect/reply desk) |
+| `frontend/src/views/AdminDashboard.vue` | Admin dashboard — compact stats cards (including Unverified card for users who haven't applied), role filtering & sorting selects, user table (admins excluded), forced price badge. Status-based cards hidden for non-supreme agents. |
+| `frontend/src/views/AdminSupportDesk.vue` | Dedicated admin helpdesk view matching AdminDashboard UI (shared gradient header with Agent Management link for supreme admins, 7 Lucide KPI cards, unified search/filter header, `@tanstack/vue-table` sorting sync, and modal inspect/reply desk) |
 | `frontend/src/views/AdminTicketDetailView.vue` | Dedicated ticket inspection & resolution page (`/admin/support/:id`) displaying subject, linked profile verification, priority & status badges, assigned agent selection (`[ASSIGNED_TO:id|name]`), quick resolve button, and internal notes |
-| `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (28 tests) |
+| `frontend/src/views/AdminLoginView.vue` | Separate admin/agent login page at `/admin/login` |
+| `frontend/src/views/AdminAgentManagement.vue` | Agent management page at `/admin/agents` (supreme admin only) — create/deactivate/activate agents |
+| `frontend/src/components/AgentsTable.vue` | Agent management table with deactivate/activate actions |
+| `frontend/src/views/__tests__/AdminDashboard.spec.ts` | AdminDashboard component tests (29 tests — includes unverified card, non-supreme visibility) |
 | `frontend/src/views/__tests__/renderDashboard.ts` | Shared test helper — wraps render with common stubs |
 | `frontend/src/components/__tests__/TicketsTable.spec.ts` | TicketsTable & column customization unit test suite (table layout without sender column, inline agent/status/category select events, and Suite 6 Max 8 Column Chooser checkbox UX assertions) |
 
@@ -993,7 +1026,7 @@ bun run test:e2e:ui        # Open Playwright UI
 
 **Quick commands:**
 ```bash
-bun run test:unit          # Single run
+bun run test:unit          # Single run (uses bunx vitest run)
 bun run test:unit:watch    # Watch mode
 ```
 
@@ -1003,25 +1036,26 @@ bun run test:unit:watch    # Watch mode
 
 ## 📊 13. Completion Summary
 
-### What's Done (90%)
+### What's Done (92%)
 
 | Feature | Status | Details |
 |---------|--------|---------|
-| Auth System | ✅ | Better Auth server, login, sessions, role-based access, seed data |
-| Backend Routes | ✅ | 30+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email) |
+| Auth System | ✅ | Better Auth server, login, sessions, role-based access, seed data, separate admin/agent login page |
+| Backend Routes | ✅ | 40+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email, agent management) |
 | AI Pricing Engine | ✅ | Rule-based with distance/weight/vehicle/goods/fuel/labour/seasonal factors |
-| Database Schema | ✅ | 9 models (users, sessions, shipments, bids, verifications, support_tickets, etc.) |
-| Frontend Views | ✅ | 14 views (all dashboards, login, register, home, shipment detail, verification, admin support desk, admin ticket detail view) |
-| Frontend Composables | ✅ | 13 composables (all TanStack Query-based) |
-| Frontend Components | ✅ | 10 components (dialogs, UsersTable, TicketsTable with `@tanstack/vue-table`, forms, nav, support email simulator) |
+| Database Schema | ✅ | 11 models (users, sessions, shipments, bids, verifications, support_tickets, ticket_replies, `isSupreme` field) |
+| Frontend Views | ✅ | 16 views (all dashboards, login pages, home, shipment detail, verification, admin support desk, admin ticket detail view, agent management) |
+| Frontend Composables | ✅ | 14 composables (all TanStack Query-based, including `useAdminAgents`) |
+| Frontend Components | ✅ | 11 components (dialogs, UsersTable, AgentsTable, TicketsTable with `@tanstack/vue-table`, forms, nav, support email simulator) |
 | Shipment Flow | ✅ | Create → AI pricing → Price confirm → Bidding → Accept → Transit |
 | Support & Email Webhook | ✅ | Inbound email simulation converted to tickets with `@tanstack/vue-table` column sorting, assigned agents (`[ASSIGNED_TO]`), account linking, standardized Admin Helpdesk UI, & dedicated ticket resolution view (`/admin/support/:id`) |
 | Forced Price Protection | ✅ | Shipper override with admin-only visibility |
 | Marketing Landing Page | ✅ | Public home page with features, how-it-works, stats |
 | User Registration | ✅ | Driver and Shipper registration with Zod validation & pending admin approval flow |
-| Testing | ✅ | Component tests (primary) + E2E tests (critical paths only) |
+| Agent Management | ✅ | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility |
+| Testing | ✅ | 72 component tests passing (AdminDashboard: 29 tests, TicketsTable: 14 tests, ReplyForm: 10 tests, others) |
 
-### What's Pending (~10%)
+### What's Pending (~8%)
 
 #### Critical for Demo
 | Item | Impact | Effort |
@@ -1034,7 +1068,6 @@ bun run test:unit:watch    # Watch mode
 |------|--------|--------|
 | Phone-based login | LoginView has phone tab but backend only supports email | 2-3 hours |
 | Bidding countdown timer | `bidding_ends_at` field exists but no UI timer | 1-2 hours |
-| `rejected/count` admin endpoint | Documented but not implemented | 30 mins |
 | Sample seed data | No sample shipments/bids for demo | 1-2 hours |
 
 ### Phase Progress
@@ -1046,17 +1079,18 @@ Phase 2 (Auth Server)     ✅ 100%
 Phase 3 (FastAPI Backend) ✅ 95%  (missing OTP routes)
 Phase 4 (Vue Frontend)    ✅ 95%  (missing charts/analytics)
 Phase 5 (Core Features)   ✅ 100% (missing OTP verification)
+Phase 5.11 (Agent Mgmt)   ✅ 100% (isSupreme, agent CRUD, login separation, agent-scoped tickets)
 Phase 6 (Polish)          ⬜ 0%   (not started)
 ```
 
 ### Recommendation
 
-**For college demo:** The core shipment + bidding + pricing + registration flow is fully functional. The remaining pieces (OTP, charts) are nice enhancements but not critical for demonstrating the main value proposition.
+**For college demo:** The core shipment + bidding + pricing + registration + agent management flow is fully functional. The remaining pieces (OTP, charts) are nice enhancements but not critical for demonstrating the main value proposition.
 
 **Next steps (in order):**
-1. Add sample seed data (1-2 hours) — makes demo more realistic
+1. Add charts/analytics (3-4 hours) — improves dashboard visual appeal
 2. Add OTP verification (4-6 hours) — completes the shipment lifecycle
-3. Add charts/analytics (3-4 hours) — improves dashboard visual appeal
+3. Add sample seed data (1-2 hours) — makes demo more realistic
 4. Add component tests for remaining views (2-3 hours) — ShipperDashboard, DriverDashboard, GetValidated
 
 **Testing strategy going forward:**

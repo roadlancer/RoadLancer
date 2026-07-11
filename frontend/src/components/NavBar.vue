@@ -39,14 +39,6 @@ const supportModalOpen = ref(false)
             <ShieldCheck class="size-5 text-primary" />
             <span class="hidden md:inline">Document Verification</span>
           </router-link>
-          <router-link
-            to="/admin/support"
-            class="flex items-center gap-2 text-base font-medium text-muted-foreground hover:text-foreground transition"
-            active-class="text-foreground font-semibold"
-          >
-            <span class="text-base">🎧</span>
-            <span class="hidden md:inline">Support Desk</span>
-          </router-link>
         </template>
 
         <button

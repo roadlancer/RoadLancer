@@ -16,7 +16,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import UsersTable from '@/components/UsersTable.vue'
 import type { SortingState } from '@tanstack/vue-table'
-import { LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle, Shield, Clock, ShieldCheck, XCircle } from '@lucide/vue'
+import { LoaderCircle, Users, UserCheck, UserX, Search, AlertCircle, Clock, ShieldCheck, XCircle } from '@lucide/vue'
 
 const router = useRouter()
 const { user, loading } = useAuth()
@@ -87,8 +87,9 @@ const suspendReasons = computed(() => {
 
 const filteredUsers = computed(() => {
   let result = [...(users.value ?? [])]
+  result = result.filter((u: any) => u.role !== 'admin')
   if (activeTab.value !== 'all') {
-    if (['driver', 'shipper', 'admin'].includes(activeTab.value)) {
+    if (['driver', 'shipper'].includes(activeTab.value)) {
       result = result.filter((u: any) => u.role === activeTab.value)
     } else if (activeTab.value === 'verified') {
       result = result.filter((u: any) => u.verification_status === 'approved')
@@ -98,6 +99,8 @@ const filteredUsers = computed(() => {
       result = result.filter((u: any) => u.verification_status === 'rejected')
     } else if (activeTab.value === 'suspended') {
       result = result.filter((u: any) => u.suspended)
+    } else if (activeTab.value === 'unverified') {
+      result = result.filter((u: any) => u.verification_status === 'none')
     }
   }
   if (searchQuery.value) {
@@ -109,13 +112,16 @@ const filteredUsers = computed(() => {
   return result
 })
 
-const stats = computed(() => ({
-  total: users.value?.length ?? 0,
-  drivers: users.value?.filter((u: any) => u.role === 'driver').length ?? 0,
-  shippers: users.value?.filter((u: any) => u.role === 'shipper').length ?? 0,
-  admins: users.value?.filter((u: any) => u.role === 'admin').length ?? 0,
-  suspended: users.value?.filter((u: any) => u.suspended).length ?? 0,
-}))
+const stats = computed(() => {
+  const nonAdmins = (users.value ?? []).filter((u: any) => u.role !== 'admin')
+  return {
+    total: nonAdmins.length,
+    drivers: nonAdmins.filter((u: any) => u.role === 'driver').length,
+    shippers: nonAdmins.filter((u: any) => u.role === 'shipper').length,
+    suspended: nonAdmins.filter((u: any) => u.suspended).length,
+    unverified: nonAdmins.filter((u: any) => u.verification_status === 'none').length,
+  }
+})
 
 function openSuspendDialog(u: any) {
   suspendTarget.value = u
@@ -225,6 +231,13 @@ watch([user, loading], ([u, l]) => {
             <span>👥</span> User Management
           </a>
           <a
+            v-if="user?.isSupreme"
+            href="/admin/agents"
+            class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-extrabold text-xs transition-all flex items-center gap-1.5"
+          >
+            <span>🤖</span> Agent Management
+          </a>
+          <a
             href="/admin/support"
             class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-extrabold text-xs transition-all flex items-center gap-1.5"
           >
@@ -288,95 +301,97 @@ watch([user, loading], ([u, l]) => {
           </CardContent>
         </Card>
 
-        <Card
-          @click="activeTab = 'admin'"
-          class="cursor-pointer transition-all hover:border-amber-500/50"
-          :class="activeTab === 'admin' ? 'ring-2 ring-amber-600 border-amber-600 bg-amber-500/5' : ''"
-        >
-          <CardContent class="p-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 bg-amber-500/10 rounded-md flex items-center justify-center shrink-0">
-                <Shield class="size-4 text-amber-600" />
+        <template v-if="user?.isSupreme">
+          <Card
+            @click="activeTab = 'unverified'"
+            class="cursor-pointer transition-all hover:border-gray-500/50"
+            :class="activeTab === 'unverified' ? 'ring-2 ring-gray-600 border-gray-600 bg-gray-500/5' : ''"
+          >
+            <CardContent class="p-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-gray-500/10 rounded-md flex items-center justify-center shrink-0">
+                  <UserX class="size-4 text-gray-600" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-lg font-bold leading-none mb-1">{{ stats.unverified }}</p>
+                  <p class="text-[11px] text-muted-foreground truncate">Unverified</p>
+                </div>
               </div>
-              <div class="min-w-0">
-                <p class="text-lg font-bold leading-none mb-1">{{ stats.admins }}</p>
-                <p class="text-[11px] text-muted-foreground truncate">Admins</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card
-          @click="activeTab = 'verified'"
-          class="cursor-pointer transition-all hover:border-green-500/50"
-          :class="activeTab === 'verified' ? 'ring-2 ring-green-600 border-green-600 bg-green-500/5' : ''"
-        >
-          <CardContent class="p-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 bg-green-500/10 rounded-md flex items-center justify-center shrink-0">
-                <ShieldCheck class="size-4 text-green-600" />
+          <Card
+            @click="activeTab = 'verified'"
+            class="cursor-pointer transition-all hover:border-green-500/50"
+            :class="activeTab === 'verified' ? 'ring-2 ring-green-600 border-green-600 bg-green-500/5' : ''"
+          >
+            <CardContent class="p-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-green-500/10 rounded-md flex items-center justify-center shrink-0">
+                  <ShieldCheck class="size-4 text-green-600" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-lg font-bold leading-none mb-1">{{ verifiedCount.data.value ?? 0 }}</p>
+                  <p class="text-[11px] text-muted-foreground truncate">Verified</p>
+                </div>
               </div>
-              <div class="min-w-0">
-                <p class="text-lg font-bold leading-none mb-1">{{ verifiedCount.data.value ?? 0 }}</p>
-                <p class="text-[11px] text-muted-foreground truncate">Verified</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card
-          @click="activeTab = 'pending'"
-          class="cursor-pointer transition-all hover:border-orange-500/50"
-          :class="activeTab === 'pending' ? 'ring-2 ring-orange-600 border-orange-600 bg-orange-500/5' : ''"
-        >
-          <CardContent class="p-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 bg-orange-500/10 rounded-md flex items-center justify-center shrink-0">
-                <Clock class="size-4 text-orange-600" />
+          <Card
+            @click="activeTab = 'pending'"
+            class="cursor-pointer transition-all hover:border-orange-500/50"
+            :class="activeTab === 'pending' ? 'ring-2 ring-orange-600 border-orange-600 bg-orange-500/5' : ''"
+          >
+            <CardContent class="p-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-orange-500/10 rounded-md flex items-center justify-center shrink-0">
+                  <Clock class="size-4 text-orange-600" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-lg font-bold leading-none mb-1">{{ pendingCount.data.value ?? 0 }}</p>
+                  <p class="text-[11px] text-muted-foreground truncate">Pending</p>
+                </div>
               </div>
-              <div class="min-w-0">
-                <p class="text-lg font-bold leading-none mb-1">{{ pendingCount.data.value ?? 0 }}</p>
-                <p class="text-[11px] text-muted-foreground truncate">Pending</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card
-          @click="activeTab = 'rejected'"
-          class="cursor-pointer transition-all hover:border-destructive/50"
-          :class="activeTab === 'rejected' ? 'ring-2 ring-destructive border-destructive bg-destructive/5' : ''"
-        >
-          <CardContent class="p-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 bg-red-500/10 rounded-md flex items-center justify-center shrink-0">
-                <XCircle class="size-4 text-red-600" />
+          <Card
+            @click="activeTab = 'rejected'"
+            class="cursor-pointer transition-all hover:border-destructive/50"
+            :class="activeTab === 'rejected' ? 'ring-2 ring-destructive border-destructive bg-destructive/5' : ''"
+          >
+            <CardContent class="p-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-red-500/10 rounded-md flex items-center justify-center shrink-0">
+                  <XCircle class="size-4 text-red-600" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-lg font-bold leading-none mb-1">{{ rejectedCount.data.value ?? 0 }}</p>
+                  <p class="text-[11px] text-muted-foreground truncate">Rejected</p>
+                </div>
               </div>
-              <div class="min-w-0">
-                <p class="text-lg font-bold leading-none mb-1">{{ rejectedCount.data.value ?? 0 }}</p>
-                <p class="text-[11px] text-muted-foreground truncate">Rejected</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card
-          @click="activeTab = 'suspended'"
-          class="cursor-pointer transition-all hover:border-red-500/50"
-          :class="activeTab === 'suspended' ? 'ring-2 ring-red-600 border-red-600 bg-red-500/5' : ''"
-        >
-          <CardContent class="p-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 bg-red-500/10 rounded-md flex items-center justify-center shrink-0">
-                <UserX class="size-4 text-red-600" />
+          <Card
+            @click="activeTab = 'suspended'"
+            class="cursor-pointer transition-all hover:border-red-500/50"
+            :class="activeTab === 'suspended' ? 'ring-2 ring-red-600 border-red-600 bg-red-500/5' : ''"
+          >
+            <CardContent class="p-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-red-500/10 rounded-md flex items-center justify-center shrink-0">
+                  <UserX class="size-4 text-red-600" />
+                </div>
+                <div class="min-w-0">
+                  <p class="text-lg font-bold leading-none mb-1">{{ stats.suspended }}</p>
+                  <p class="text-[11px] text-muted-foreground truncate">Suspended</p>
+                </div>
               </div>
-              <div class="min-w-0">
-                <p class="text-lg font-bold leading-none mb-1">{{ stats.suspended }}</p>
-                <p class="text-[11px] text-muted-foreground truncate">Suspended</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </template>
       </div>
 
       <Alert v-if="error" variant="destructive" class="mb-6">

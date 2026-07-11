@@ -1,8 +1,14 @@
+import os
+import secrets
+from datetime import datetime, timezone
+
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from pydantic import BaseModel
 from app.database import db
-from app.routes.admin import get_admin_user
+import re
+from app.routes.admin import get_admin_user, get_supreme_admin_user
 
 router = APIRouter(prefix="/admin/users", tags=["users"])
 
@@ -13,6 +19,12 @@ class SuspendRequest(BaseModel):
 
 class ReviewRequest(BaseModel):
     reason: Optional[str] = None
+
+
+class CreateAgentRequest(BaseModel):
+    name: str
+    email: str
+    password: str
 
 
 def user_to_dict(u) -> dict:
@@ -26,6 +38,7 @@ def user_to_dict(u) -> dict:
         "role": role_val,
         "phone": u.phone,
         "suspended": getattr(u, "suspended", False),
+        "isSupreme": getattr(u, "isSupreme", False),
         "status": status_val,
         "created_at": (u.createdAt if isinstance(u.createdAt, str) else u.createdAt.isoformat()) if u.createdAt else None,
     }
@@ -128,9 +141,6 @@ async def suspend_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if user.role == "admin":
-        raise HTTPException(status_code=400, detail="Cannot suspend another admin")
-
     updated = await db.user.update(
         where={"id": user_id},
         data={"suspended": body.suspended},
@@ -138,6 +148,16 @@ async def suspend_user(
 
     if body.suspended:
         await db.session.delete_many(where={"userId": user_id})
+
+        tickets = await db.support_tickets.find_many(
+            where={"adminNotes": {"contains": f"[ASSIGNED_TO:{user_id}|"}}
+        )
+        for ticket in tickets:
+            cleaned = re.sub(r"\[ASSIGNED_TO:.*?\|.*?\]\n?\s*", "", ticket.adminNotes or "")
+            await db.support_tickets.update(
+                where={"id": ticket.id},
+                data={"adminNotes": cleaned.strip() or None},
+            )
 
     return user_to_dict(updated)
 
@@ -183,3 +203,104 @@ async def reject_user(
     await db.session.delete_many(where={"userId": user_id})
 
     return user_to_dict(updated)
+
+
+@router.post("/{user_id}/deactivate-agent")
+async def deactivate_agent(
+    user_id: str,
+    supreme: dict = Depends(get_supreme_admin_user),
+):
+    if user_id == supreme["id"]:
+        raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+
+    user = await db.user.find_unique(where={"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    role_val = user.role.value if hasattr(user.role, "value") else user.role
+    if role_val != "admin":
+        raise HTTPException(status_code=400, detail="Can only deactivate admin agents")
+
+    updated = await db.user.update(
+        where={"id": user_id},
+        data={"suspended": True},
+    )
+
+    await db.session.delete_many(where={"userId": user_id})
+
+    tickets = await db.support_tickets.find_many(
+        where={"adminNotes": {"contains": f"[ASSIGNED_TO:{user_id}|"}}
+    )
+    for ticket in tickets:
+        cleaned = re.sub(r"\[ASSIGNED_TO:.*?\|.*?\]\n?\s*", "", ticket.adminNotes or "")
+        await db.support_tickets.update(
+            where={"id": ticket.id},
+            data={"adminNotes": cleaned.strip() or None},
+        )
+
+    return user_to_dict(updated)
+
+
+@router.post("/{user_id}/activate-agent")
+async def activate_agent(
+    user_id: str,
+    supreme: dict = Depends(get_supreme_admin_user),
+):
+    user = await db.user.find_unique(where={"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    role_val = user.role.value if hasattr(user.role, "value") else user.role
+    if role_val != "admin":
+        raise HTTPException(status_code=400, detail="Can only activate admin agents")
+
+    updated = await db.user.update(
+        where={"id": user_id},
+        data={"suspended": False},
+    )
+
+    return user_to_dict(updated)
+
+
+@router.post("/create-agent")
+async def create_agent(
+    body: CreateAgentRequest,
+    supreme: dict = Depends(get_supreme_admin_user),
+):
+    existing = await db.user.find_unique(where={"email": body.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = secrets.token_hex(16)
+    now = datetime.now(timezone.utc)
+
+    new_user = await db.user.create(
+        data={
+            "id": user_id,
+            "name": body.name,
+            "email": body.email,
+            "role": "admin",
+            "status": "approved",
+            "suspended": False,
+            "isSupreme": False,
+            "emailVerified": False,
+        }
+    )
+
+    salt = os.urandom(16)
+    salt_hex = salt.hex()
+    kdf = Scrypt(salt=salt_hex.encode("utf-8"), length=64, n=16384, r=16, p=1)
+    key = kdf.derive(body.password.encode("utf-8"))
+    hashed = f"{salt_hex}:{key.hex()}"
+
+    await db.account.create(
+        data={
+            "id": secrets.token_hex(16),
+            "accountId": user_id,
+            "providerId": "credential",
+            "userId": user_id,
+            "password": hashed,
+        }
+    )
+
+    return user_to_dict(new_user)
