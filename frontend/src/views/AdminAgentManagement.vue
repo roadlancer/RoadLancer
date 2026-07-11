@@ -52,8 +52,9 @@ watch([agents, searchQuery], () => {
 const deactivateDialogOpen = ref(false)
 const agentToDeactivate = ref<any>(null)
 
-function openDeactivateDialog(agent: any) {
-  agentToDeactivate.value = agent
+function openDeactivateDialog(userId: string) {
+  const agent = agents.value?.find((a: any) => a.id === userId)
+  agentToDeactivate.value = agent || { id: userId, name: userId }
   deactivateDialogOpen.value = true
 }
 
