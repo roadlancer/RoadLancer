@@ -20,10 +20,13 @@ describe('ReplyForm Component Unit Tests', () => {
       // Inputs
       const senderInput = screen.getByTestId('reply-sender-name-input') as HTMLInputElement
       const messageTextarea = screen.getByTestId('reply-message-textarea') as HTMLTextAreaElement
+      const polishButton = screen.getByTestId('reply-polish-button') as HTMLButtonElement
       const submitButton = screen.getByTestId('reply-submit-button') as HTMLButtonElement
 
       expect(senderInput).toBeTruthy()
       expect(messageTextarea).toBeTruthy()
+      expect(polishButton).toBeTruthy()
+      expect(polishButton.textContent).toContain('Polish')
       expect(submitButton).toBeTruthy()
       expect(submitButton.textContent).toContain('Send Reply')
     })
@@ -89,14 +92,17 @@ describe('ReplyForm Component Unit Tests', () => {
       })
 
       const submitButton = screen.getByTestId('reply-submit-button') as HTMLButtonElement
+      const polishButton = screen.getByTestId('reply-polish-button') as HTMLButtonElement
       const messageTextarea = screen.getByTestId('reply-message-textarea') as HTMLTextAreaElement
 
       // Initially empty -> disabled
       expect(submitButton.disabled).toBe(true)
+      expect(polishButton.disabled).toBe(true)
 
       // Type whitespace -> still disabled
       await fireEvent.update(messageTextarea, '   \n  \t  ')
       expect(submitButton.disabled).toBe(true)
+      expect(polishButton.disabled).toBe(true)
     })
 
     it('enables the submit button once message has non-whitespace characters', async () => {

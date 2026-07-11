@@ -44,6 +44,17 @@ class CreateTicketReplyRequest(BaseModel):
     sender_name: Optional[str] = Field(default=None, max_length=100)
 
 
+class PolishReplyRequest(BaseModel):
+    draft: str = Field(max_length=5000)
+    message: Optional[str] = Field(default=None, max_length=5000)
+
+
+class PolishReplyResponse(BaseModel):
+    polished: str
+    success: bool = True
+    source: str = "FastAPI Backend"
+
+
 async def ensure_ticket_replies_table():
     try:
         await db.query_raw("""

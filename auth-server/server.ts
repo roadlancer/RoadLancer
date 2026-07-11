@@ -6,7 +6,129 @@ const port = 3000;
 console.log(`🔐 Better Auth server starting on http://localhost:${port}`);
 
 const server = serve({
-  fetch: auth.handler,
+  fetch: async (req: Request) => {
+    const url = new URL(req.url);
+    if (req.method === "POST" && (url.pathname === "/api/auth/ai/polish" || url.pathname === "/api/auth/support/polish")) {
+      try {
+        const body = await req.json().catch(() => ({}));
+        const textToPolish = body.draft || body.message || "";
+        if (!textToPolish.trim()) {
+          return new Response(JSON.stringify({ error: "Draft message is required" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const { generateText } = await import("ai");
+        const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "API key is missing on backend server", code: "API_KEY_MISSING" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const agentName = body.senderName || body.agent_name || "Sarah Jenkins (Support Lead)";
+        let customerFirstName = body.customerName || body.customer_name || body.customerFirstName || "there";
+        if (customerFirstName && customerFirstName !== "there") {
+          customerFirstName = customerFirstName.trim().split(/\s+/)[0];
+          customerFirstName = customerFirstName.charAt(0).toUpperCase() + customerFirstName.slice(1);
+        } else if (body.senderEmail && typeof body.senderEmail === "string" && body.senderEmail.includes("@")) {
+          const prefix = body.senderEmail.split("@")[0].replace(/[._+-].*/, "");
+          if (prefix && prefix.length > 1) {
+            customerFirstName = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+          }
+        }
+        const googleProvider = createGoogleGenerativeAI({ apiKey });
+        const systemPrompt = `You are an AI writing assistant that polishes and improves customer support draft replies written by human agents.
+Your ONLY task is to take the user's exact draft text and polish its grammar, tone, clarity, and professionalism so it sounds polite, empathetic, and well-structured.
+CRITICAL RULES:
+1. STRICTLY PRESERVE the exact meaning, facts, figures, dates, names, and decisions stated in the original draft.
+2. DO NOT invent new facts, promises, or explanations that are not present in the original draft.
+3. DO NOT write a completely different or generic customer service response. You must improve and rewrite the exact draft provided.
+4. Output ONLY the final polished reply text directly, without any introductory words, notes, quotes, or markdown formatting around it.
+5. SIGNATURE REQUIREMENT: Always conclude the polished reply with a clean, professional signature block in the exact following format at the bottom:
+
+Best regards,
+${agentName}
+RoadLancer Support Team
+https://roadlancer.com
+
+(If the original draft already contained an informal sign-off or name, replace it with this standardized signature block.)
+6. GREETING REQUIREMENT: Always begin the polished reply by addressing the customer respectfully by their first name "${customerFirstName}" at the very top (for example: "Hi ${customerFirstName}," or "Dear ${customerFirstName},"). If the original draft already had a greeting with a different name or no name at all, update or prepend it so it starts cleanly by addressing "${customerFirstName}".`;
+        const promptText = `Please polish and improve the following support agent draft reply while preserving its exact facts and meaning:\n\n---\n${textToPolish.trim()}\n---`;
+        
+        let text = "";
+        let usage: any = null;
+        try {
+          const res = await generateText({
+            model: googleProvider("gemini-3.1-flash-lite"),
+            maxTokens: 350,
+            temperature: 0.3,
+            maxRetries: 0,
+            system: systemPrompt,
+            prompt: promptText,
+          });
+          text = res.text;
+          usage = res.usage;
+        } catch (firstErr: any) {
+          const firstMsg = (firstErr?.message || "").toLowerCase();
+          if (firstMsg.includes("quota") || firstMsg.includes("rate") || firstMsg.includes("429") || firstErr?.status === 429 || firstMsg.includes("not found") || firstMsg.includes("404") || firstErr?.status === 404 || firstMsg.includes("is not supported") || firstMsg.includes("invalid model")) {
+            const fallbackRes = await generateText({
+              model: googleProvider("gemini-1.5-flash"),
+              maxTokens: 350,
+              temperature: 0.3,
+              maxRetries: 0,
+              system: systemPrompt,
+              prompt: promptText,
+            });
+            text = fallbackRes.text;
+            usage = fallbackRes.usage;
+          } else {
+            throw firstErr;
+          }
+        }
+
+        let finalPolished = text.trim();
+        if (customerFirstName && customerFirstName !== "there") {
+          const topSlice = finalPolished.slice(0, 80).toLowerCase();
+          if (!topSlice.includes(customerFirstName.toLowerCase())) {
+            finalPolished = `Hi ${customerFirstName},\n\n${finalPolished}`;
+          }
+        }
+        if (!finalPolished.includes("https://roadlancer.com")) {
+          finalPolished += `\n\nBest regards,\n${agentName}\nRoadLancer Support Team\nhttps://roadlancer.com`;
+        }
+
+        return new Response(JSON.stringify({ 
+          polished: finalPolished, 
+          success: true,
+          usage: usage || { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          source: "Backend Server"
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err: any) {
+        console.error("Error polishing reply in auth-server:", err);
+        const errMsg = err?.message || "Failed to polish reply";
+        const errMsgUpper = errMsg.toUpperCase();
+        let code = "UNKNOWN_ERROR";
+        let status = 500;
+        if (errMsgUpper.includes("API_KEY_INVALID") || errMsgUpper.includes("KEY NOT VALID") || errMsgUpper.includes("401") || errMsgUpper.includes("UNAUTHORIZED") || err?.status === 401 || err?.status === 403) {
+          code = "API_KEY_INVALID";
+          status = 401;
+        } else if (errMsgUpper.includes("QUOTA") || errMsgUpper.includes("RATE") || errMsgUpper.includes("RESOURCE_EXHAUSTED") || errMsgUpper.includes("429") || err?.status === 429) {
+          code = "TOKEN_QUOTA_EXHAUSTED";
+          status = 429;
+        }
+        return new Response(JSON.stringify({ error: errMsg, code }), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+    return auth.handler(req);
+  },
   port,
   hostname: "0.0.0.0",
 }, (info) => {
