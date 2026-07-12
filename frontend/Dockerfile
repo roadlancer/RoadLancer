@@ -16,4 +16,4 @@ COPY --from=builder /app/dist ./dist
 
 EXPOSE 4173
 
-CMD ["sh", "-c", "bunx serve dist -l ${PORT:-4173} --no-clipboard"]
+CMD ["sh", "-c", "bunx serve dist -s -l ${PORT:-4173} --no-clipboard"]
