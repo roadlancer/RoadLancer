@@ -668,6 +668,24 @@ async def admin_clear_failed_jobs(admin: dict = Depends(get_admin_user)):
         return {"success": False, "error": str(e)}
 
 
+@router.get("/admin/analytics")
+async def admin_support_analytics(admin: dict = Depends(get_admin_user)):
+    """
+    Support dashboard analytics via PostgreSQL stored function.
+    """
+    result = await db.query_raw("SELECT support_analytics($1) AS data", admin["id"])
+    return result[0]["data"]
+
+
+@router.get("/admin/analytics/daily")
+async def admin_support_daily(admin: dict = Depends(get_admin_user)):
+    """
+    Daily ticket counts via PostgreSQL stored function.
+    """
+    result = await db.query_raw("SELECT support_analytics_daily($1) AS data", admin["id"])
+    return result[0]["data"]
+
+
 @router.get("/admin/{ticket_id}")
 async def admin_get_ticket(
     ticket_id: str,
