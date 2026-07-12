@@ -1,11 +1,9 @@
 # Environment
 .env
 .env.backup
-.env.production
 
 # Node
 node_modules/
-bun.lock
 
 # Python
 __pycache__/
