@@ -12,7 +12,7 @@ import api from '@/lib/api'
 import { generateText } from 'ai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY || 'GEMINI_KEY_REDACTED'
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY || ''
 
 export interface TicketDetailProps {
   ticket: SupportTicket
