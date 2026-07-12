@@ -33,7 +33,7 @@ async function main() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Origin": "http://localhost:5173",
+        "Origin": process.env.SEED_ORIGIN || "http://localhost:5173",
       },
       body: JSON.stringify(userData),
     });
