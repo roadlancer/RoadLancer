@@ -3,7 +3,7 @@ import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./src/generated/prisma/client.ts";
-import { bearer } from "better-auth/plugins";
+import { bearer, customSession } from "better-auth/plugins";
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL!,
@@ -72,5 +72,20 @@ export const auth = betterAuth({
       ipAddressHeaders: ["x-forwarded-for"],
     },
   },
-  plugins: [bearer()],
+  plugins: [
+    bearer(),
+    customSession(async ({ user, session }) => {
+      return {
+        user: {
+          ...user,
+          role: user.role,
+          phone: user.phone,
+          suspended: user.suspended,
+          isSupreme: user.isSupreme,
+          status: user.status,
+        },
+        session,
+      };
+    }),
+  ],
 });

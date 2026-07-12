@@ -216,6 +216,8 @@ export function useAdminTickets() {
       const { data } = await api.get('/support/admin/count')
       return data as {
         total: number
+        new: number
+        processing: number
         open: number
         in_progress: number
         resolved: number

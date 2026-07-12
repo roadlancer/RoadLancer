@@ -187,6 +187,10 @@ async function handleQuickAssign({
 
 function getStatusBadgeClass(status: string) {
   switch (status) {
+    case 'new':
+      return 'bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 font-extrabold animate-pulse'
+    case 'processing':
+      return 'bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950/40 dark:text-cyan-300 font-extrabold animate-pulse'
     case 'open':
       return 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300'
     case 'in_progress':
@@ -231,6 +235,12 @@ function getStatusBadgeClass(status: string) {
             class="px-4 py-2 rounded-xl bg-teal-600 text-white font-extrabold text-xs shadow-md hover:bg-teal-500 transition-all flex items-center gap-1.5"
           >
             <span>🎧</span> Support Desk & Inbound Emails
+          </a>
+          <a
+            href="/admin/jobs"
+            class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-extrabold text-xs transition-all flex items-center gap-1.5"
+          >
+            <span>⚡</span> pg-boss Queue Monitor
           </a>
         </div>
       </div>
@@ -524,6 +534,8 @@ function getStatusBadgeClass(status: string) {
                     v-model="replyStatus"
                     class="w-full h-9 px-3 bg-background border border-input rounded-lg text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                   >
+                    <option value="new">New</option>
+                    <option value="processing">Processing</option>
                     <option value="open">Open / Pending</option>
                     <option value="in_progress">In Progress</option>
                     <option value="resolved">Resolved</option>

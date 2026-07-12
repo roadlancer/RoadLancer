@@ -100,6 +100,10 @@ function getCategoryBadgeClass(category?: string) {
 
 function getStatusBadgeClass(status: string) {
   switch (status) {
+    case 'new':
+      return 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 font-extrabold animate-pulse'
+    case 'processing':
+      return 'bg-cyan-100 text-cyan-800 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 font-extrabold animate-pulse'
     case 'open':
       return 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300'
     case 'in_progress':
@@ -536,6 +540,8 @@ const table = useVueTable({
                 ]"
                 title="Change status right from the table"
               >
+                <option value="new">New</option>
+                <option value="processing">Processing</option>
                 <option value="open">Open</option>
                 <option value="in_progress">In Progress</option>
                 <option value="resolved">Resolved</option>

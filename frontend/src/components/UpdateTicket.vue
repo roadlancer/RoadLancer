@@ -110,6 +110,8 @@ function onAgentChange(e: Event) {
           class="w-full h-10 px-3 bg-background border border-input rounded-xl text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
           data-testid="status-select"
         >
+          <option value="new">New (Awaiting AI/Review)</option>
+          <option value="processing">Processing (AI Evaluating)</option>
           <option value="open">Open (Needs Attention)</option>
           <option value="in_progress">In Progress (Investigating)</option>
           <option value="resolved">Resolved (Complete)</option>

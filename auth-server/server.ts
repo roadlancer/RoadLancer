@@ -1,6 +1,12 @@
-import { serve } from "@hono/node-server";
 import { auth, prisma } from "./auth.ts";
 import { initQueue, enqueueClassifyTicket, boss } from "./queue.ts";
+
+process.on("uncaughtException", (err) => {
+  console.error("❌ Uncaught exception:", err);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("❌ Unhandled rejection:", err);
+});
 
 const port = 3000;
 
@@ -8,7 +14,9 @@ console.log(`🔐 Better Auth server starting on http://localhost:${port}`);
 
 initQueue();
 
-const server = serve({
+const server = Bun.serve({
+  port,
+  hostname: "0.0.0.0",
   fetch: async (req: Request) => {
     const url = new URL(req.url);
     if (req.method === "POST" && (url.pathname === "/api/auth/ai/polish" || url.pathname === "/api/auth/support/polish")) {
@@ -77,7 +85,7 @@ https://roadlancer.com
           const firstMsg = (firstErr?.message || "").toLowerCase();
           if (firstMsg.includes("quota") || firstMsg.includes("rate") || firstMsg.includes("429") || firstErr?.status === 429 || firstMsg.includes("not found") || firstMsg.includes("404") || firstErr?.status === 404 || firstMsg.includes("is not supported") || firstMsg.includes("invalid model")) {
             const fallbackRes = await generateText({
-              model: googleProvider("gemini-1.5-flash"),
+              model: googleProvider("gemini-2.5-flash"),
               maxTokens: 350,
               temperature: 0.3,
               maxRetries: 0,
@@ -131,7 +139,7 @@ https://roadlancer.com
       }
     }
 
-    if (req.method === "POST" && pathname === "/api/auth/ai/summarize") {
+    if (req.method === "POST" && url.pathname === "/api/auth/ai/summarize") {
       try {
         const body = await req.json();
         const { generateText } = await import("ai");
@@ -175,7 +183,7 @@ Output ONLY the markdown summary directly without extra chatter or intro text.`;
           const firstMsg = (firstErr?.message || "").toLowerCase();
           if (firstMsg.includes("quota") || firstMsg.includes("rate") || firstMsg.includes("429") || firstErr?.status === 429 || firstMsg.includes("not found") || firstMsg.includes("404") || firstErr?.status === 404 || firstMsg.includes("is not supported") || firstMsg.includes("invalid model")) {
             const fallbackRes = await generateText({
-              model: googleProvider("gemini-1.5-flash"),
+              model: googleProvider("gemini-2.5-flash"),
               maxTokens: 400,
               temperature: 0.3,
               maxRetries: 0,
@@ -218,10 +226,10 @@ Output ONLY the markdown summary directly without extra chatter or intro text.`;
       }
     }
 
-    if (req.method === "POST" && pathname === "/api/auth/ai/classify") {
+    if (req.method === "POST" && url.pathname === "/api/auth/ai/classify") {
       try {
         const body = await req.json().catch(() => ({}));
-        const { ticketId = "", subject = "", message = "", background = false } = body;
+        const { ticketId = "", subject = "", message = "", senderName = "", background = false } = body;
         if (!subject.trim() && !message.trim() && !ticketId) {
           return new Response(JSON.stringify({ error: "ticketId, subject, or message is required" }), {
             status: 400,
@@ -230,7 +238,7 @@ Output ONLY the markdown summary directly without extra chatter or intro text.`;
         }
 
         if (background || ticketId) {
-          const jobId = await enqueueClassifyTicket({ ticketId, subject, message });
+          const jobId = await enqueueClassifyTicket({ ticketId, subject, message, senderName });
           if (jobId) {
             console.log(`📦 [pg-boss] Queued classify-ticket job ${jobId} for ticket: ${ticketId}`);
             return new Response(JSON.stringify({ success: true, jobId, message: "Classification job queued via pg-boss" }), {
@@ -278,7 +286,7 @@ Return strictly valid JSON with no markdown formatting or extra text:
         let text = "";
         try {
           const res = await generateText({
-            model: googleProvider("gemini-3.1-flash-lite"),
+            model: googleProvider("gemini-2.5-flash"),
             maxTokens: 200,
             temperature: 0.2,
             maxRetries: 0,
@@ -287,7 +295,7 @@ Return strictly valid JSON with no markdown formatting or extra text:
           text = res.text;
         } catch (firstErr: any) {
           const res = await generateText({
-            model: googleProvider("gemini-1.5-flash"),
+            model: googleProvider("gemini-3-flash"),
             maxTokens: 200,
             temperature: 0.2,
             maxRetries: 0,
@@ -300,21 +308,32 @@ Return strictly valid JSON with no markdown formatting or extra text:
         console.log("✨ [auth-server/classify] Classified ticket:", parsed);
 
         if (ticketId) {
-          await prisma.support_tickets.update({
-            where: { id: ticketId },
-            data: {
-              category: parsed.category || "general",
-              priority: parsed.priority || "normal",
-            },
-          }).catch(() => {
-            prisma.support_tickets.update({
-              where: { ticketNumber: ticketId },
-              data: {
-                category: parsed.category || "general",
-                priority: parsed.priority || "normal",
-              },
-            }).catch(() => {});
-          });
+          const isAutoResolved = Boolean(parsed.canAutoResolve && parsed.resolutionReply && parsed.resolutionReply.trim());
+          const newStatus = isAutoResolved ? "resolved" : "open";
+          const notePrefix = isAutoResolved
+            ? `[AI_AUTO_RESOLVED] Automatically resolved upon arrival using RoadLancer knowledge base. Reason: ${parsed.reason || ""}`
+            : `[AI_CLASSIFIED] Auto-classified via Gemini. Reason: ${parsed.reason || ""}`;
+
+          await prisma.$executeRawUnsafe(
+            `UPDATE support_tickets SET category = $1, priority = $2, status = $3, admin_notes = $4 WHERE id = $5 OR ticket_number = $5`,
+            parsed.category || "general",
+            parsed.priority || "normal",
+            newStatus,
+            notePrefix,
+            ticketId
+          );
+
+          if (isAutoResolved) {
+            const replyId = crypto.randomUUID();
+            await prisma.$executeRawUnsafe(
+              `INSERT INTO ticket_replies (id, ticket_id, sender_name, sender_role, sender_type, message, created_at, updated_at)
+               VALUES ($1, $2, 'RoadLancer AI Agent', 'admin', 'agent', $3, NOW(), NOW())`,
+              replyId,
+              ticketId,
+              parsed.resolutionReply
+            );
+            console.log(`🤖 [auth-server/classify] Auto-resolved ticket ${ticketId} with automated reply!`);
+          }
         }
 
         return new Response(JSON.stringify({ success: true, classification: parsed }), {
@@ -329,23 +348,20 @@ Return strictly valid JSON with no markdown formatting or extra text:
       }
     }
 
-    return auth.handler(req);
+    try {
+      const res = await auth.handler(req);
+      if (res.status >= 400) {
+        const errBody = await res.clone().text().catch(() => "");
+        console.error(`❌ [auth] ${res.status} ${url.pathname}: ${errBody.substring(0, 300)}`);
+      }
+      return res;
+    } catch (err: any) {
+      console.error(`❌ [auth] THREW ${url.pathname}:`, err?.message || err);
+      return new Response(JSON.stringify({ error: err?.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
   },
-  port,
-  hostname: "0.0.0.0",
-}, (info) => {
-  console.log(`✅ Better Auth server running on http://localhost:${info.port}`);
-  console.log(`📋 Health check: http://localhost:${info.port}/api/auth/ok`);
-  console.log(`🔗 Auth API: http://localhost:${info.port}/api/auth/`);
 });
 
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught exception:", err);
-});
-
-process.on("unhandledRejection", (err) => {
-  console.error("Unhandled rejection:", err);
-});
-
-// Keep the process alive
-process.stdin.resume();
+console.log(`✅ Better Auth server running on http://localhost:${port}`);
+console.log(`📋 Health check: http://localhost:${port}/api/auth/ok`);
+console.log(`🔗 Auth API: http://localhost:${port}/api/auth/`);

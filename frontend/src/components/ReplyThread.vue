@@ -96,7 +96,17 @@ withDefaults(defineProps<ReplyThreadProps>(), {
             </div>
           </div>
 
-          <div class="text-sm text-foreground/90 leading-relaxed whitespace-pre-line font-sans" :data-testid="`reply-message-${reply.id}`">
+          <div
+            v-if="reply.sender_type === 'agent' || reply.sender_role === 'admin'"
+            class="text-sm text-foreground/90 leading-relaxed font-sans [&_p]:mb-2 [&_p:last-child]:mb-0 [&_ul]:my-2 [&_ul]:pl-5 [&_ul]:list-disc [&_li]:mb-1 [&_strong]:font-bold"
+            :data-testid="`reply-message-${reply.id}`"
+            v-html="reply.message"
+          />
+          <div
+            v-else
+            class="text-sm text-foreground/90 leading-relaxed whitespace-pre-line font-sans"
+            :data-testid="`reply-message-${reply.id}`"
+          >
             {{ reply.message }}
           </div>
         </div>
