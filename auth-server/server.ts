@@ -348,8 +348,35 @@ Return strictly valid JSON with no markdown formatting or extra text:
       }
     }
 
+    const origin = req.headers.get("origin") || "";
+    const allowedOrigins = (process.env.TRUSTED_ORIGINS || "").split(",").map((s: string) => s.trim());
+
+    if (req.method === "OPTIONS") {
+      const isAllowed = allowedOrigins.some((o: string) => origin === o) || origin.includes("localhost");
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": isAllowed ? origin : allowedOrigins[0] || "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-Id",
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+
+    const corsHeaders: Record<string, string> = {};
+    if (origin) {
+      const isAllowed = allowedOrigins.some((o: string) => origin === o) || origin.includes("localhost");
+      if (isAllowed) {
+        corsHeaders["Access-Control-Allow-Origin"] = origin;
+        corsHeaders["Access-Control-Allow-Credentials"] = "true";
+      }
+    }
+
     try {
       const res = await auth.handler(req);
+      Object.entries(corsHeaders).forEach(([k, v]) => res.headers.set(k, v));
       if (res.status >= 400) {
         const errBody = await res.clone().text().catch(() => "");
         console.error(`❌ [auth] ${res.status} ${url.pathname}: ${errBody.substring(0, 300)}`);
