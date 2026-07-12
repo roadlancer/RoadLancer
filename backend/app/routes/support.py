@@ -169,10 +169,29 @@ async def generate_unique_ticket_number() -> str:
 
 async def classify_ticket_background(ticket_id: str, subject: str, message: str):
     """
-    Non-blocking background task to automatically classify a ticket's category and priority
-    using Gemini (gemini-3.1-flash-lite with fallback to gemini-1.5-flash).
+    Non-blocking background task to automatically classify a ticket's category and priority.
+    First delegates to pg-boss queue running on auth-server (http://localhost:3000/api/auth/ai/classify),
+    falling back to local Gemini execution if auth-server is unreachable.
     """
     try:
+        # First attempt: delegate to pg-boss on auth-server
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            try:
+                res = await client.post(
+                    "http://localhost:3000/api/auth/ai/classify",
+                    json={
+                        "ticketId": ticket_id,
+                        "subject": subject,
+                        "message": message,
+                        "background": True,
+                    }
+                )
+                if res.status_code in (200, 202):
+                    print(f"📦 [classify_ticket_background] Successfully dispatched ticket {ticket_id} to pg-boss queue on auth-server.")
+                    return
+            except Exception as queue_err:
+                print(f"⚠️ [classify_ticket_background] Could not reach pg-boss on auth-server ({queue_err}). Falling back to local Gemini execution.")
+
         api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_GENERATIVE_AI_API_KEY")
         if not api_key:
             print(f"⚠️ [classify_ticket_background] No GEMINI_API_KEY set. Skipping auto-classification for ticket {ticket_id}.")

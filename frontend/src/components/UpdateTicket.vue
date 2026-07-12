@@ -129,11 +129,16 @@ function onAgentChange(e: Event) {
           data-testid="category-select"
         >
           <option value="general">General Inquiry</option>
-          <option value="verification">KYC & Verification</option>
-          <option value="billing">Billing & Payments</option>
-          <option value="shipments">Shipment & Delivery</option>
-          <option value="technical">Technical & App Issue</option>
-          <option value="account">Profile & Account</option>
+          <option value="logistics_breakdown">Logistics Breakdown & Technical</option>
+          <option value="billing_payment">Billing & FASTag Payments</option>
+          <option value="verification_kyc">KYC & Document Verification</option>
+          <option value="shipment_tracking">GPS & Shipment Tracking</option>
+          <option value="account_access">Profile & Account Access</option>
+          <option value="verification">KYC & Verification (Legacy)</option>
+          <option value="billing">Billing & Payments (Legacy)</option>
+          <option value="shipments">Shipment & Delivery (Legacy)</option>
+          <option value="technical">Technical Issue (Legacy)</option>
+          <option value="account">Profile & Account (Legacy)</option>
         </select>
       </div>
 

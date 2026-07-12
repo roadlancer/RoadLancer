@@ -1,9 +1,12 @@
 import { serve } from "@hono/node-server";
-import { auth } from "./auth.ts";
+import { auth, prisma } from "./auth.ts";
+import { initQueue, enqueueClassifyTicket, boss } from "./queue.ts";
 
 const port = 3000;
 
 console.log(`🔐 Better Auth server starting on http://localhost:${port}`);
+
+initQueue();
 
 const server = serve({
   fetch: async (req: Request) => {
@@ -218,13 +221,27 @@ Output ONLY the markdown summary directly without extra chatter or intro text.`;
     if (req.method === "POST" && pathname === "/api/auth/ai/classify") {
       try {
         const body = await req.json().catch(() => ({}));
-        const { subject = "", message = "", background = false } = body;
-        if (!subject.trim() && !message.trim()) {
-          return new Response(JSON.stringify({ error: "Subject or message is required" }), {
+        const { ticketId = "", subject = "", message = "", background = false } = body;
+        if (!subject.trim() && !message.trim() && !ticketId) {
+          return new Response(JSON.stringify({ error: "ticketId, subject, or message is required" }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
           });
         }
+
+        if (background || ticketId) {
+          const jobId = await enqueueClassifyTicket({ ticketId, subject, message });
+          if (jobId) {
+            console.log(`📦 [pg-boss] Queued classify-ticket job ${jobId} for ticket: ${ticketId}`);
+            return new Response(JSON.stringify({ success: true, jobId, message: "Classification job queued via pg-boss" }), {
+              status: 202,
+              headers: { "Content-Type": "application/json" },
+            });
+          } else {
+            console.warn("⚠️ [pg-boss] Boss queue not initialized or job failed, running local async execution");
+          }
+        }
+
         const { generateText } = await import("ai");
         const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
         const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY;
@@ -258,51 +275,52 @@ Choose exactly ONE priority from:
 Return strictly valid JSON with no markdown formatting or extra text:
 {"category": "<category>", "priority": "<priority>", "reason": "<brief 1-sentence reason>"}`;
 
-        const classifyWorker = async () => {
-          try {
-            let text = "";
-            try {
-              const res = await generateText({
-                model: googleProvider("gemini-3.1-flash-lite"),
-                maxTokens: 200,
-                temperature: 0.2,
-                maxRetries: 0,
-                prompt,
-              });
-              text = res.text;
-            } catch (firstErr: any) {
-              const res = await generateText({
-                model: googleProvider("gemini-1.5-flash"),
-                maxTokens: 200,
-                temperature: 0.2,
-                maxRetries: 0,
-                prompt,
-              });
-              text = res.text;
-            }
-            const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-            const parsed = JSON.parse(cleanText);
-            console.log("✨ [auth-server/classifyWorker] Classified ticket:", parsed);
-            return parsed;
-          } catch (e) {
-            console.error("❌ [auth-server/classifyWorker] Classification error:", e);
-            return { category: "general", priority: "normal", reason: "Classification failed or rate limited" };
-          }
-        };
-
-        if (background) {
-          setTimeout(() => { classifyWorker(); }, 0);
-          return new Response(JSON.stringify({ success: true, message: "Classification started in background" }), {
-            status: 202,
-            headers: { "Content-Type": "application/json" },
+        let text = "";
+        try {
+          const res = await generateText({
+            model: googleProvider("gemini-3.1-flash-lite"),
+            maxTokens: 200,
+            temperature: 0.2,
+            maxRetries: 0,
+            prompt,
           });
-        } else {
-          const result = await classifyWorker();
-          return new Response(JSON.stringify({ success: true, classification: result }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
+          text = res.text;
+        } catch (firstErr: any) {
+          const res = await generateText({
+            model: googleProvider("gemini-1.5-flash"),
+            maxTokens: 200,
+            temperature: 0.2,
+            maxRetries: 0,
+            prompt,
+          });
+          text = res.text;
+        }
+        const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+        const parsed = JSON.parse(cleanText);
+        console.log("✨ [auth-server/classify] Classified ticket:", parsed);
+
+        if (ticketId) {
+          await prisma.support_tickets.update({
+            where: { id: ticketId },
+            data: {
+              category: parsed.category || "general",
+              priority: parsed.priority || "normal",
+            },
+          }).catch(() => {
+            prisma.support_tickets.update({
+              where: { ticketNumber: ticketId },
+              data: {
+                category: parsed.category || "general",
+                priority: parsed.priority || "normal",
+              },
+            }).catch(() => {});
           });
         }
+
+        return new Response(JSON.stringify({ success: true, classification: parsed }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       } catch (err: any) {
         return new Response(JSON.stringify({ error: err?.message || "Failed to classify ticket" }), {
           status: 500,
