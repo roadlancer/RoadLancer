@@ -111,6 +111,10 @@ function getPriorityBadgeClass(priority: string) {
 
 function getStatusBadgeClass(status: string) {
   switch (status) {
+    case 'new':
+      return 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30 font-bold animate-pulse'
+    case 'processing':
+      return 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 border-cyan-500/30 font-bold animate-pulse'
     case 'resolved':
       return 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-semibold'
     case 'closed':
@@ -119,7 +123,7 @@ function getStatusBadgeClass(status: string) {
       return 'bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/30 font-semibold'
     case 'open':
     default:
-      return 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold animate-pulse'
+      return 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30 font-semibold'
   }
 }
 

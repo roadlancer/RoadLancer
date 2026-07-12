@@ -165,17 +165,23 @@ async def generate_unique_ticket_number() -> str:
             raise e
     # Fallback if 4 digits collide
     return f"TICK-{int(time.time()) % 100000}"
-
-
-async def classify_ticket_background(ticket_id: str, subject: str, message: str):
+async def classify_ticket_background(ticket_id: str, subject: str, message: str, sender_name: str = ""):
     """
-    Non-blocking background task to automatically classify a ticket's category and priority.
-    First delegates to pg-boss queue running on auth-server (http://localhost:3000/api/auth/ai/classify),
-    falling back to local Gemini execution if auth-server is unreachable.
+    Non-blocking background task to enqueue ticket classification & auto-resolution into the pg-boss queue.
+    Ensures a single unified flow: Webhook -> pg-boss Queue -> AI Worker (Bun queue.ts).
+    If auth-server HTTP API is unreachable, directly inserts the job into the pgboss.job table in PostgreSQL.
     """
     try:
-        # First attempt: delegate to pg-boss on auth-server
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            await db.support_tickets.update(
+                where={"id": ticket_id},
+                data={"status": "processing"}
+            )
+        except Exception as st_err:
+            print(f"⚠️ [classify_ticket_background] Could not set processing state: {st_err}")
+
+        # Attempt 1: Enqueue via Bun auth-server API
+        async with httpx.AsyncClient(timeout=4.0) as client:
             try:
                 res = await client.post(
                     "http://localhost:3000/api/auth/ai/classify",
@@ -183,95 +189,44 @@ async def classify_ticket_background(ticket_id: str, subject: str, message: str)
                         "ticketId": ticket_id,
                         "subject": subject,
                         "message": message,
+                        "senderName": sender_name,
                         "background": True,
                     }
                 )
                 if res.status_code in (200, 202):
-                    print(f"📦 [classify_ticket_background] Successfully dispatched ticket {ticket_id} to pg-boss queue on auth-server.")
+                    print(f"📦 [classify_ticket_background] Successfully enqueued ticket {ticket_id} to pg-boss queue via auth-server API.")
                     return
             except Exception as queue_err:
-                print(f"⚠️ [classify_ticket_background] Could not reach pg-boss on auth-server ({queue_err}). Falling back to local Gemini execution.")
+                print(f"⚠️ [classify_ticket_background] auth-server HTTP API unreachable ({queue_err}). Enqueuing directly into PostgreSQL pgboss.job table.")
 
-        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_GENERATIVE_AI_API_KEY")
-        if not api_key:
-            print(f"⚠️ [classify_ticket_background] No GEMINI_API_KEY set. Skipping auto-classification for ticket {ticket_id}.")
-            return
-
-        prompt = f"""You are an AI classification engine for RoadLancer, an Indian logistics and transport marketplace platform.
-Analyze the following support ticket subject and message, and determine the exact category and priority level.
-
-SUBJECT: {subject}
-MESSAGE: {message}
-
-Choose exactly ONE category from:
-- "logistics_breakdown": Vehicle breakdown, SOS, reefer temperature alarms, accident reports, checkpost detention, e-way bill mismatch.
-- "billing_payment": Freight invoice delays, FASTag double deductions, fuel advances, wallet credits/debits, payment settlement.
-- "verification_kyc": Driver/shipper profile review, RC book, driving license, Aadhaar, GST certificate updates, status pending.
-- "shipment_tracking": GPS tracking loss, POD (Proof of Delivery) issues, return load queries, route diversion.
-- "account_access": Login issues, password reset, account settings, notification preferences.
-- "general": General feedback, feature inquiries, marketplace questions, referral bonuses, CSV export help.
-
-Choose exactly ONE priority from:
-- "urgent": Emergency breakdown on highway, temperature/vaccine spoilage risk, SOS alarm, active accident.
-- "high": Vehicle detained at border checkpost, payment settlement blocked, verification rejected blocking urgent dispatch.
-- "normal": Standard invoice inquiries, FASTag disputes, KYC review, general shipment tracking.
-- "low": General platform feedback, historical reports, referral queries, notification settings.
-
-Return strictly valid JSON with no markdown formatting or extra text:
-{{"category": "<category>", "priority": "<priority>", "reason": "<brief 1-sentence reason>"}}"""
-
-        models_to_try = ["gemini-3.1-flash-lite", "gemini-1.5-flash"]
-        result_json = None
-
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            for model_name in models_to_try:
-                try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                    payload = {
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "temperature": 0.2,
-                            "maxOutputTokens": 200,
-                        }
-                    }
-                    resp = await client.post(url, json=payload)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        raw_text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        clean_text = raw_text.strip().replace("```json", "").replace("```", "").strip()
-                        result_json = json.loads(clean_text)
-                        break
-                    else:
-                        print(f"⚠️ [classify_ticket_background] Model {model_name} returned status {resp.status_code}: {resp.text}")
-                except Exception as e:
-                    print(f"⚠️ [classify_ticket_background] Error calling {model_name}: {e}")
-
-        if result_json and "category" in result_json and "priority" in result_json:
-            category = str(result_json["category"]).strip().lower()
-            priority = str(result_json["priority"]).strip().lower()
-            reason = str(result_json.get("reason", "")).strip()
-
-            valid_categories = ["logistics_breakdown", "billing_payment", "verification_kyc", "shipment_tracking", "account_access", "general"]
-            valid_priorities = ["urgent", "high", "normal", "low"]
-
-            if category not in valid_categories:
-                category = "general"
-            if priority not in valid_priorities:
-                priority = "normal"
-
-            await db.support_tickets.update(
-                where={"id": ticket_id},
-                data={
-                    "category": category,
-                    "priority": priority,
-                }
+        # Attempt 2: If auth-server HTTP API is unreachable, enqueue directly into PostgreSQL pgboss.job table
+        try:
+            job_id = str(uuid.uuid4())
+            await db.query_raw(
+                """
+                INSERT INTO pgboss.job (
+                    id, name, priority, data, state, retry_limit, retry_count, retry_delay, retry_backoff, start_after, created_on
+                ) VALUES (
+                    $1::uuid, 'classify-ticket', 0, $2::jsonb, 'created'::pgboss.job_state, 3, 0, 5000, true, NOW(), NOW()
+                )
+                """,
+                job_id,
+                json.dumps({"ticketId": ticket_id, "subject": subject, "message": message, "senderName": sender_name}),
             )
-            print(f"✨ [classify_ticket_background] Successfully classified ticket {ticket_id} -> Category: '{category}', Priority: '{priority}' (Reason: {reason})")
-        else:
-            print(f"❌ [classify_ticket_background] Failed to classify ticket {ticket_id}: No valid JSON result obtained.")
+            print(f"📦 [classify_ticket_background] Successfully enqueued ticket {ticket_id} directly into pgboss.job table (Job ID: {job_id}).")
+        except Exception as db_err:
+            print(f"❌ [classify_ticket_background] Failed to enqueue directly into pgboss.job: {db_err}")
+            try:
+                await db.support_tickets.update(where={"id": ticket_id}, data={"status": "open"})
+            except Exception:
+                pass
 
     except Exception as exc:
-        print(f"❌ [classify_ticket_background] Uncaught exception during classification for ticket {ticket_id}: {exc}")
+        print(f"❌ [classify_ticket_background] Uncaught exception during queue dispatch for ticket {ticket_id}: {exc}")
+        try:
+            await db.support_tickets.update(where={"id": ticket_id}, data={"status": "open"})
+        except Exception:
+            pass
 
 
 @router.post("/inbound-email")
@@ -329,10 +284,10 @@ async def simulate_inbound_email(
                     "priority": req.priority or "normal",
                     "source": req.source or "email",
                     "userId": user_id,
-                    "status": "open",
+                    "status": "new",
                 }
             )
-            asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.body))
+            asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.body, sender_name))
             break
         except Exception as e:
             last_exc = e
@@ -384,11 +339,11 @@ async def create_web_ticket(
             "priority": req.priority or "normal",
             "source": req.source or "web",
             "userId": user["id"],
-            "status": "open",
+            "status": "new",
         }
     )
 
-    asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.message))
+    asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.message, user.get("name") or user["email"]))
 
     # Fetch full user object for dict conversion
     db_user = await db.user.find_unique(where={"id": user["id"]})
@@ -414,10 +369,10 @@ async def trigger_ticket_classification(
             raise HTTPException(status_code=404, detail="Ticket not found")
 
     if background:
-        asyncio.create_task(classify_ticket_background(ticket.id, ticket.subject, ticket.message))
+        asyncio.create_task(classify_ticket_background(ticket.id, ticket.subject, ticket.message, ticket.senderName or ""))
         return {"success": True, "message": f"Non-blocking classification triggered for ticket #{ticket.ticketNumber}"}
     else:
-        await classify_ticket_background(ticket.id, ticket.subject, ticket.message)
+        await classify_ticket_background(ticket.id, ticket.subject, ticket.message, ticket.senderName or "")
         updated_ticket = await db.support_tickets.find_unique(where={"id": ticket.id})
         return {"success": True, "ticket": ticket_to_dict(updated_ticket)}
 
@@ -525,7 +480,7 @@ async def get_my_tickets(
         if t.userId == user["id"] or (t.senderEmail and t.senderEmail.lower() == user["email"].lower())
     ]
 
-    if status and status in ("open", "in_progress", "resolved", "closed"):
+    if status and status in ("new", "processing", "open", "in_progress", "resolved", "closed"):
         my_tickets = [t for t in my_tickets if t.status == status]
     if source and source in ("email", "web", "profile_edit"):
         my_tickets = [t for t in my_tickets if t.source == source]
@@ -568,11 +523,14 @@ async def admin_list_tickets(
     sort_by: Optional[str] = "newest",
     sort_field: Optional[str] = None,
     sort_order: Optional[str] = "desc",
+    show_ai_resolved: Optional[bool] = False,
     admin: dict = Depends(get_admin_user),
 ):
     """
     Admin endpoint to list all support tickets across all users and sources.
     Supreme admins see all tickets. Regular agents see only tickets assigned to them.
+    Tickets currently being processed by AI (status: 'processing') are hidden unless explicitly requested.
+    Once AI finishes auto-resolving, tickets are fully visible under 'resolved'.
     """
     tickets = await db.support_tickets.find_many()
 
@@ -583,10 +541,11 @@ async def admin_list_tickets(
         assignee_tag = f"[ASSIGNED_TO:{admin['id']}|"
         tickets = [
             t for t in tickets
-            if t.adminNotes and assignee_tag in (t.adminNotes or "")
+            if (t.adminNotes and assignee_tag in (t.adminNotes or ""))
+            or ("[ASSIGNED_TO:" not in (t.adminNotes or ""))
         ]
 
-    if status and status in ("open", "in_progress", "resolved", "closed"):
+    if status and status in ("new", "processing", "open", "in_progress", "resolved", "closed"):
         tickets = [t for t in tickets if t.status == status]
 
     if priority and priority in ("low", "normal", "high", "urgent"):
@@ -628,7 +587,10 @@ async def admin_list_tickets(
 
 
 @router.get("/admin/count")
-async def admin_ticket_counts(admin: dict = Depends(get_admin_user)):
+async def admin_ticket_counts(
+    show_ai_resolved: Optional[bool] = False,
+    admin: dict = Depends(get_admin_user),
+):
     """
     Admin endpoint returning KPI counts for support tickets.
     Supreme admins see all tickets. Regular agents see only tickets assigned to them.
@@ -647,6 +609,8 @@ async def admin_ticket_counts(admin: dict = Depends(get_admin_user)):
 
     return {
         "total": len(all_tickets),
+        "new": sum(1 for t in all_tickets if t.status == "new"),
+        "processing": sum(1 for t in all_tickets if t.status == "processing"),
         "open": sum(1 for t in all_tickets if t.status == "open"),
         "in_progress": sum(1 for t in all_tickets if t.status == "in_progress"),
         "resolved": sum(1 for t in all_tickets if t.status == "resolved"),
@@ -654,6 +618,54 @@ async def admin_ticket_counts(admin: dict = Depends(get_admin_user)):
         "inbound_email": sum(1 for t in all_tickets if t.source == "email"),
         "web": sum(1 for t in all_tickets if t.source != "email"),
     }
+
+
+@router.get("/admin/jobs/horizon")
+async def admin_jobs_horizon(admin: dict = Depends(get_admin_user)):
+    """
+    Horizon-style real-time dashboard endpoint querying pgboss.job directly inside PostgreSQL.
+    Returns live job counts by state, active jobs, recent completions, and failure diagnostics.
+    """
+    try:
+        jobs = await db.query_raw('SELECT id, name, priority, state, data, output, created_on as "createdOn", started_on as "startedOn", completed_on as "completedOn" FROM pgboss.job ORDER BY created_on DESC LIMIT 100')
+    except Exception as e:
+        jobs = []
+
+    if isinstance(jobs, list):
+        state_counts = {
+            "total": len(jobs),
+            "created": sum(1 for j in jobs if j.get("state") == "created"),
+            "active": sum(1 for j in jobs if j.get("state") == "active"),
+            "completed": sum(1 for j in jobs if j.get("state") == "completed"),
+            "failed": sum(1 for j in jobs if j.get("state") in ("failed", "cancelled", "expired")),
+        }
+    else:
+        jobs = []
+        state_counts = {"total": 0, "created": 0, "active": 0, "completed": 0, "failed": 0}
+
+    return {
+        "status": "online",
+        "engine": "pg-boss (PostgreSQL Job Queue)",
+        "stats": state_counts,
+        "jobs": jobs
+    }
+
+
+@router.delete("/admin/jobs/clear-failed")
+async def admin_clear_failed_jobs(admin: dict = Depends(get_admin_user)):
+    """
+    Clears old failed or cancelled diagnostic jobs from the pgboss.job table.
+    """
+    try:
+        await db.execute_raw("DELETE FROM pgboss.job WHERE state::text IN ('failed', 'cancelled', 'expired')")
+        try:
+            await db.execute_raw("DELETE FROM pgboss.archive WHERE state::text IN ('failed', 'cancelled', 'expired')")
+        except Exception:
+            pass
+        return {"success": True, "message": "Cleared failed jobs from pg-boss queue."}
+    except Exception as e:
+        print(f"❌ [admin_clear_failed_jobs] Error: {e}")
+        return {"success": False, "error": str(e)}
 
 
 @router.get("/admin/{ticket_id}")

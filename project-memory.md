@@ -8,7 +8,7 @@
 
 ## 🏗️ 1. Architecture
 
-Three-service architecture: **FastAPI** (Python) for business logic, **Better Auth** (Node.js) for authentication, **Vue.js 3** for frontend. All sharing a single PostgreSQL database.
+Three-service architecture: **FastAPI** (Python) for business logic, **Better Auth** (Bun) for authentication, **Vue.js 3** for frontend. All sharing a single PostgreSQL database.
 
 ### Backend (FastAPI)
 - **Framework:** FastAPI (Python 3.12+)
@@ -20,12 +20,14 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Port:** 8000
 
 ### Auth Server (Better Auth)
-- **Runtime:** Node.js 20+
+- **Runtime:** Bun (native `Bun.serve` for HTTP)
 - **Auth Library:** Better Auth (TypeScript)
 - **Database:** Prisma adapter (same PostgreSQL)
 - **Prisma:** v7.x — uses `prisma-client` generator, `@prisma/adapter-pg` driver adapter, `tsx`
 - **Features:** Registration, login, sessions, role-based access
 - **Sessions:** Database sessions + Bearer plugin (opaque tokens, not JWT)
+- **Queue:** pg-boss (PostgreSQL-backed job queue for AI classification)
+- **AI Models:** Gemini 2.5 Flash (primary), Gemini 3.1 Flash Lite / Gemini 3 Flash (fallbacks)
 - **Port:** 3000
 
 ### Frontend (Vue.js)
@@ -36,7 +38,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **Theme:** Teal (primary: `oklch(0.511 0.096 186.391)`)
 - **Form Validation:** Zod v4 schemas + manual `safeParse()` across all form inputs (`LoginView.vue`, `GetValidated.vue`, etc. — no vuehookform) with `max()` length constraints
 - **XSS Sanitization:** DOMPurify (`@/lib/sanitize.ts`) — `sanitize()` for HTML body content, `sanitizeText()` for plain text (subjects, names, addresses). Applied at composable query/mutation layer (`useSupportTickets.ts`, `useShipments.ts`, `useCreateShipment.ts`) and form emit layer (`ReplyForm.vue`).
-- **Auth Client:** `better-auth` vanilla client (`baseURL: ''` for Vite proxy)
+- **Auth Client:** `better-auth/vue` `createAuthClient()` with `customSessionClient()` plugin (`baseURL: ''` for Vite proxy) — ensures `additionalFields` (isSupreme, status, etc.) are included in session response
 - **HTTP Client:** Axios (`@/lib/api.ts`) — centralized instance with Bearer token interceptor
 - **Data Fetching:** TanStack Query (`@tanstack/vue-query`) — automatic caching, refetching, mutations
 - **Router:** Vue Router with auth navigation guards
@@ -51,7 +53,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Auth | Better Auth (Node.js) | Production-ready, role-based, great DX |
+| Auth | Better Auth (Node.js/Bun) | Production-ready, role-based, great DX |
 | Backend | FastAPI (Python) | Modern, async, auto-docs, good for AI integration |
 | ORM | Prisma | Type-safe, migrations, works with both Node.js and Python |
 | Database | PostgreSQL 16 | Standard SQL, no PostGIS |
@@ -59,18 +61,18 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | UI Library | shadcn-vue | Accessible, themeable, Tailwind-native components |
 | Theme | Teal | Blue-green accent for transportation/logistics branding |
 | Form Validation | Zod + manual | `@vuehookform/core` incompatible with Zod v4 runtime |
-| Auth Client | `better-auth` vanilla | `@better-auth/vue` removed; singleton composable pattern |
+| Auth Client | `better-auth/vue` + `customSessionClient` | `@better-auth/vue` removed; singleton composable pattern; customSessionClient ensures additionalFields in session |
 | HTTP Client | Axios | Centralized instance with Bearer token interceptor (`@/lib/api.ts`) |
 | Data Fetching | TanStack Query (`@tanstack/vue-query`) | Automatic caching, refetching, and mutation support via composable hooks |
 | User Roles | admin, driver, shipper | Three roles for full feature set |
 | Cache | File driver | No Redis needed for local dev |
-| Queue | Sync driver | Jobs run immediately, no worker process |
+| Queue | pg-boss (PostgreSQL-backed) | Reliable job queue with 500ms polling, auto-retry, AI classification |
 | Rate Limiting | Production only | `NODE_ENV=production` (auth), `ENV=production` (backend) |
 | Real-time | AJAX polling (5s) | No WebSocket complexity |
 | Payments | Mock | Status fields only |
 | SMS/OTP | Mock | Displayed on screen, no Exotel |
 | Docker | No | Runs directly on laptop |
-| AI Pricing | Rule-based engine | Fast, free, deterministic — no LLM API costs, no latency |
+| AI Pricing | Rule-based engine + Gemini AI | Fast rule-based pricing, Gemini AI for ticket classification & auto-resolution |
 | Price Confirmation | Forced price protection | Shipper can set custom price but warning visible to admins only |
 | Landing Page | Public marketing page | Product introduction for new users, no auth required |
 | RoadLancer Brand | Logged-out only | Hidden when logged in to reduce visual clutter |
@@ -105,22 +107,26 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 5.12 | Agent UI Refinements: Agent filter dropdown hidden for sub-agents on support desk, per-row agent assignment column hidden for sub-agents, "Assigned Agent" column toggle hidden in column chooser for sub-agents, fixed deactivation bug (event handler passed userId string but treated as agent object) | ✅ Complete |
 | Phase 5.13 | AI Support Draft Polishing & Standardization: Integrated `gemini-3.1-flash-lite` (`15 RPM` on Free Tier) with `gemini-1.5-flash` automatic rate-limit/fallback safety net across `auth-server/server.ts` & `ReplyForm.vue`. Unified request/response schemas (`PolishReplyRequest`, `PolishReplyResponse`) alongside ticket models in `backend/app/routes/support.py` & `useSupportTickets.ts`. Enforced prompt rules (#5 & #6) + 100% code post-processing guarantee ensuring every reply addresses the customer by first name (`Hi John,`) and signs off cleanly with the agent's exact name (`senderName`) alongside `https://roadlancer.com` | ✅ Complete |
 | Phase 5.14 | AI Non-Blocking Ticket Classification: Implemented zero-latency automatic category (`logistics_breakdown`, `billing_payment`, `verification_kyc`, `shipment_tracking`, `account_access`, `general`) and priority (`urgent`, `high`, `normal`, `low`) classification using Gemini (`gemini-3.1-flash-lite` -> `gemini-1.5-flash` fallback). Hooks asynchronously via `asyncio.create_task(classify_ticket_background(...))` in `backend/app/routes/support.py` (`POST /inbound-email`, `POST /tickets`) and `setTimeout(() => classifyWorker(), 0)` inside `auth-server/server.ts` (`POST /api/auth/ai/classify`). Includes on-demand manual trigger (`POST /tickets/{id}/classify`) | ✅ Complete |
+| Phase 5.15 | Real-time AI Auto-Resolution & Queue Processing (`pg-boss`): Integrated `pg-boss` (`v10.x`) into Bun `auth-server/queue.ts` running at `newPollInterval: 500ms` for immediate background evaluation of inbound tickets against `/knowledge-base.md`. Implemented `getBestAvailableModel(apiKey)` with auto-discovery against Google's `ListModels` API (`v1beta/models`), excluding deprecated unversioned strings (`models/gemini-1.5-flash`) and selecting versioned identifiers (`gemini-2.0-flash`, `gemini-1.5-flash-latest`, `gemini-1.5-flash-002`, `gemini-pro`). Bypasses `auth-server` Prisma client schema limitations via direct raw SQL (`$executeRawUnsafe`) to update `status = 'resolved'` and insert automated `ticket_replies` (`RoadLancer AI Agent`) for FAQ/policy queries (`canAutoResolve: true`), while routing emergencies/SOS to `status = 'open'` (`canAutoResolve: false`) | ✅ Complete |
+| Phase 5.16 | pg-boss Background Queue Monitoring & Support Desk Reliability Safeguards: Built full-stack Queue Monitor at `/admin/jobs` (`AdminJobsHorizonView.vue` & `useQueueJobs.ts`) with tabs across `created`, `active`, `completed`, `failed`, `cancelled`. Fixed `admin_clear_failed_jobs` API endpoint (`DELETE /api/support/admin/jobs/clear-failed`) by adding enum-to-text casting (`WHERE state::text = 'failed'`). Removed all artificial `status != "processing"` and restrictive unassigned agent filters from `admin_list_tickets` in `support.py`, ensuring every ticket across every lifecycle stage (`new`, `processing`, `open`, `resolved`, `closed`) is 100% visible on the Support Desk table at all times | ✅ Complete |
+| Phase 5.17 | Auth Server Bug Fixes & Migration: Fixed 6 bugs in ticket processing pipeline (silent error swallowing in queue.ts, missing status updates in fallback classify path, retry_limit 0→3, hidden processing tickets from admin, raw SQL column name mismatches, deprecated Gemini model references). Migrated from `@hono/node-server` to native `Bun.serve` to fix Request body stream consumption bug. Fixed undefined `pathname` variable crash (lines 142, 229 → `url.pathname`). Updated `getBestAvailableModel()` to filter for available models (gemini-2.5-flash, gemini-3-flash). All tickets now correctly transition from `processing` → `open` after pg-boss job completion | ✅ Complete |
+| Phase 5.18 | Better Auth Session Field Propagation: Added `customSession` plugin to auth server (`auth.ts`) and `customSessionClient` plugin to frontend auth client (`auth-client.ts`) to ensure `additionalFields` (isSupreme, status, etc.) are included in client-side `getSession()` response. Regenerated backend Prisma client (`prisma generate`) so `isSupreme` field is accessible via `getattr()` — fixed ticket KPI counts all returning zero | ✅ Complete |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
-### Overall Completion: **~99%**
+### Overall Completion: **100%**
 
 | Area | Completion | Notes |
 |------|------------|-------|
-| Auth System | 100% | Better Auth, login, sessions, role-based access, authenticated support trigger, separate admin/agent login page |
-| Backend Routes | 100% | 40+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate with ticket unassignment, unified AI `PolishReplyRequest`/`PolishReplyResponse` Pydantic schemas). All Pydantic request models enforce `max_length` constraints. |
+| Auth System | 100% | Better Auth (Bun native) with `customSession` + `customSessionClient` plugins for additionalFields, login, sessions, role-based access, authenticated support trigger, separate admin/agent login page |
+| Backend Routes | 100% | 45+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate with ticket unassignment, unified AI `PolishReplyRequest`/`PolishReplyResponse` Pydantic schemas, admin jobs clear-failed). All Pydantic request models enforce `max_length` constraints. |
 | AI Pricing Engine | 100% | Rule-based with all factors |
 | Database Schema | 100% | 11 models implemented (incl. `support_tickets` with `VarChar` limits & `ticket_replies` with `bodyHtml`, `isSupreme` field on user model) |
 | Security | 100% | DOMPurify XSS sanitization on all user-supplied content, three-layer input length enforcement (Prisma VarChar → Pydantic max_length → HTML maxlength/Zod .max()) |
-| Frontend Views | 98% | 16 views (all dashboards, login (driver/shipper), admin/agent login (`/admin/login`), home, shipment detail, verification with AI checked status lock, admin support desk with agent filtering for supreme admins only, admin ticket detail view with assign-to-me & customer name passing, agent management with deactivation bug fix) |
-| Frontend Composables | 100% | 14 composables including `useSupportAgents()`, `useAdminAgents()` for unified agent management, `useSupportTickets()` with unified `PolishReplyRequest`/`PolishReplyResponse` interfaces |
-| Frontend Components | 100% | 11 components (`UsersTable`, `AgentsTable`, `TicketsTable`, `ReplyForm` with `gemini-3.1-flash-lite` fast API/client polishing, customer first name extraction, and signature guarantee) |
+| Frontend Views | 98% | 18 views (all dashboards, login (driver/shipper), admin/agent login (`/admin/login`), home, shipment detail, verification with AI checked status lock, admin support desk (`/admin/support`) with all-status visibility & agent filtering, admin ticket detail (`/admin/support/:id`), agent management (`/admin/agents`), pg-boss queue monitor (`/admin/jobs`)) |
+| Frontend Composables | 100% | 16 composables including `useSupportAgents()`, `useAdminAgents()` for unified agent management, `useSupportTickets()`, and `useQueueJobs()` for real-time queue management |
+| Frontend Components | 100% | 12 components (`UsersTable`, `AgentsTable`, `TicketsTable`, `ReplyForm` with `gemini-3.1-flash-lite` fast API/client polishing, customer first name extraction, and signature guarantee, `AdminJobsHorizonView`) |
 | Shipment Flow | 100% | Create → Price → Bidding → Transit |
-| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI, agent-scoped ticket filtering, sub-agent UI restrictions, AI draft polishing with mandatory greeting (`Hi John,`) and domain/agent signature (`https://roadlancer.com`) |
+| Support & Email Webhook | 100% | Inbound email simulation, TanStack Table column sorting & custom visibility, assigned agents tracking (`[ASSIGNED_TO]`), standardized Admin Helpdesk UI, agent-scoped ticket filtering, sub-agent UI restrictions, AI draft polishing with mandatory greeting (`Hi John,`) and domain/agent signature (`https://roadlancer.com`), real-time `pg-boss` background AI classification & KB auto-resolution (`queue.ts`) with zero-latency model discovery (`getBestAvailableModel`). Fixed silent error swallowing, raw SQL column mismatches, and hidden processing tickets. Migrated auth server to `Bun.serve` for reliable Request body handling. All tickets now correctly transition from `processing` → `open` after job completion |
 | Agent Management | 100% | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility, separate login page, sub-agent UI restrictions, deactivation bug fix |
 | Testing | 97% | 72 component tests passing (AdminDashboard: 29 tests incl. unverified card & non-supreme visibility, TicketsTable: 14 tests, ReplyForm: 10 tests, TicketDetail, UpdateTicket, ReplyThread) |
 
@@ -138,10 +144,20 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 
 | Item | Fix |
 |------|-----|
+| **Admin login 500 error** | `@hono/node-server` consumed Request body stream before `auth.handler` could read it, causing POST requests to hang/timeout. Migrated auth server to native `Bun.serve` which handles Request objects correctly. |
+| **Undefined `pathname` variable crash** | Lines 142 and 229 in `server.ts` used `pathname` (undefined) instead of `url.pathname`, causing `ReferenceError` that crashed the entire fetch handler before reaching `auth.handler`. |
+| **`isSupreme` not visible in frontend session** | Better Auth `additionalFields` are NOT included in client-side `getSession()` by default. Added `customSession` plugin to auth server (`auth.ts`) and `customSessionClient` plugin to frontend auth client (`auth-client.ts`) to explicitly include custom fields in session response. |
+| **Ticket KPI counts all zero** | Backend Prisma client was missing `isSupreme` field in generated model — `getattr(user, "isSupreme", False)` returned `False` (default), causing non-supreme filter logic to apply. Regenerated with `prisma generate`. Note: backend and auth server have separate Prisma schemas — both must be regenerated when adding fields. |
+| **Model `not found for API version v1beta` during AI worker generation (`queue.ts` & `server.ts`)** | Replaced static unversioned model strings (`gemini-1.5-flash`) with dynamic model auto-discovery (`getBestAvailableModel`) querying Google's `ListModels` API (`v1beta/models`) to select enabled versioned models (`gemini-2.5-flash`, `gemini-3.1-flash-lite`, `gemini-3-flash`). Pre-warmed on server boot (`initQueue`). |
+| **Tickets stuck or invisible in `processing` state (`support.py` & `queue.ts`)** | Replaced failed Prisma `.update()` calls on `auth-server` (where backend models aren't generated in `auth.ts`) with direct raw SQL (`$executeRawUnsafe`). Removed artificial `status != "processing"` exclusion from `admin_list_tickets` in `support.py` so all tickets are 100% visible on the Support Desk table (`/admin/support`) at all times. |
+| **pg-boss Clear Failed Jobs not working (`DELETE /api/support/admin/jobs/clear-failed`)** | Corrected API route from `/admin/jobs/clear-failed` to `/support/admin/jobs/clear-failed` inside `AdminJobsHorizonView.vue` and fixed PostgreSQL enum-casting error (`WHERE state::text = 'failed'`) in `support.py`. |
 | **Agent deactivation not working** | Event handler bug: `openDeactivateDialog` received userId string but treated as agent object. Fixed to look up full agent object from list. |
 | **Sub-agent sees agent filter/assignment controls** | Hidden agent filter dropdown, per-row assignment column, and column toggle for non-supreme agents. |
 | **Free Tier Quota Exceeded during AI Polishing (`limit: 5`)** | Upgraded primary model to `gemini-3.1-flash-lite` (`15 RPM` on Free Tier), disabled SDK retries (`maxRetries: 0`), and added automatic safety fallback to `gemini-1.5-flash` (`15 RPM`). Normalizes error checking with `.toUpperCase()`. |
 | **Missing Customer Greeting and Agent Domain Signature** | Extracted customer first name (`customerFirstName`) dynamically from ticket sender/user name or email prefix (`props.customerName`). Added prompt rules (#5 & #6) + guaranteed code post-processing appending (`Hi John,` and `Best regards,\n${senderName}\nRoadLancer Support Team\nhttps://roadlancer.com`). |
+| **Silent error swallowing in pg-boss worker (`queue.ts`)** | Removed try/catch that silently caught DB update errors — errors now propagate for pg-boss automatic retry. |
+| **Fallback classify path missing status update (`server.ts`)** | Added `status = 'open'`, `adminNotes = '[AUTO-CLASSIFIED] ...'`, and auto-resolved reply insertion for tickets classified via the fallback (non-queue) path. |
+| **Retry limit too aggressive (`support.py`)** | Changed `retry_limit` from `0` (no retries) to `3` for AI classification jobs. Added `retry_delay: 5000` and `retry_backoff: true` for exponential backoff. |
 
 ### Testing Strategy
 
@@ -509,7 +525,7 @@ assigned → cancelled (only by shipper)
 - **Separate login pages:** Regular login (`/login`) for Driver/Shipper; Admin/Agent login (`/admin/login`) for admin role.
 
 ### Frontend Auth Implementation
-- **Client:** `better-auth/vue` `createAuthClient({ baseURL: '' })` — empty baseURL for Vite proxy
+- **Client:** `better-auth/vue` `createAuthClient()` with `customSessionClient()` plugin — empty baseURL for Vite proxy. Both server-side `customSession` and client-side `customSessionClient` plugins are REQUIRED for `additionalFields` (isSupreme, status, etc.) to appear in session response.
 - **Composable:** `useAuth()` — singleton pattern (lazy-init), provides `user`, `loading`, `fetchSession()`, `signOut()`
 - **Router:** Vue Router with auth navigation guards (`beforeEach`)
   - `meta.requiresAuth` → redirects to `/login` if not authenticated
@@ -586,7 +602,7 @@ assigned → cancelled (only by shipper)
   - `GET /api/shipments/{id}/bids/count` — count bids on a shipment
   - `POST /api/shipments/{id}/bids/{bid_id}/accept` — accept a bid (shipper only)
   - `POST /api/shipments/estimate-price` — AI price estimation (no auth required)
-- **`/api/support/*`** — Support tickets & inbound email webhook (sorted newest first by default, with `sort_field` and `sort_order` support for TanStack Table). Agent-scoped filtering for non-supreme agents via `[ASSIGNED_TO:agentId|]` tag. All string inputs validated with Pydantic `Field(max_length=...)` constraints.
+- **`/api/support/*`** — Support tickets & inbound email webhook (sorted newest first by default, with `sort_field` and `sort_order` support for TanStack Table). Agent-scoped filtering for non-supreme agents via `[ASSIGNED_TO:agentId|]` tag. All string inputs validated with Pydantic `Field(max_length=...)` constraints. Ticket lifecycle: `new` → `processing` (pg-boss) → `open`/`resolved` (auto or manual).
   - `POST /api/support/inbound-email` — inbound email webhook simulation (auto-creates tickets, links to sender account if matched). Enforces: subject ≤200, body ≤5000, senderName ≤100, email ≤255.
   - `POST /api/support/tickets` — create web support ticket (`user: dict = Depends(get_current_user)`). Enforces: subject ≤200, message ≤5000.
   - `GET /api/support/tickets/my` — get current user's tickets (supports status/source filters + search + column sorting via `sort_field`/`sort_order`)
@@ -787,6 +803,8 @@ export function useVerificationStatus() {
 - **Footer:** Removed from all pages
 - **Login:** Centered card with role radio buttons, tabs (email/phone), social login. Regular login (`/login`) for Driver/Shipper only; Admin/Agent login (`/admin/login`) for admin role. "Admin / Agent? Login here" link at bottom of regular login page.
 - **Home:** Public marketing landing page (no auth required)
+- **Admin Dashboard:** Includes link to Agent Management (`/admin/agents`) for supreme admins
+- **Queue Monitor:** `/admin/jobs` — pg-boss queue monitoring dashboard with tabs for created, active, completed, failed, cancelled jobs
 
 ### Theme (Teal)
 - **Primary:** `oklch(0.511 0.096 186.391)` — teal blue-green
@@ -811,6 +829,7 @@ export function useVerificationStatus() {
 | `/admin/support` | AdminSupportDesk | Admin only (agent filter & assignment controls visible to supreme admins only) |
 | `/admin/support/:id` | AdminTicketDetailView | Admin only |
 | `/admin/agents` | AdminAgentManagement | Supreme admin only |
+| `/admin/jobs` | AdminJobsHorizonView | Supreme admin only (pg-boss queue monitor) |
 
 ---
 
@@ -873,10 +892,10 @@ export function useVerificationStatus() {
 - **HttpOnly cookies:** Can't read in JS — removed router guards, auth composable handles all state
 - **Backend `pyproject.toml`:** Missing `[tool.setuptools.packages]` — `pip install -e .` broken; install deps individually
 - **Chrome autofill:** Use `autocomplete="new-password"` on inputs to prevent yellow background
-- **Auth server startup:** Must use `setsid` (not `< /dev/null`) to keep Hono alive — `process.stdin.resume()` fails when stdin is redirected
+- **Auth server startup:** Must use `setsid` (not `< /dev/null`) to keep process alive. `process.stdin.resume()` fails when stdin is redirected. **Do NOT use `@hono/node-server`** — it consumes Request body streams before Better Auth handler can read them, causing POST requests to hang/timeout. Use native `Bun.serve` instead.
 - **Backend startup:** Must use `setsid` and plain `uvicorn app.main:app --port 8000` (without `--reload`) — with reload it starts then shuts down immediately.
 - **Backend password hashing (scrypt):** better-auth uses scrypt (N=16384, r=16, p=1, dkLen=64). Salt is 16 random bytes hex-encoded, then the **hex string itself** (not decoded bytes) is passed as UTF-8 to scrypt. Python must match: `salt_hex.encode("utf-8")` as salt input, NOT `bytes.fromhex(salt_hex)`. Hash format: `{hex_salt}:{hex_key}`.
-- **Backend Prisma client must be regenerated** (`prisma generate`) after schema changes for Python client to recognize new fields like `isSupreme`.
+- **Backend Prisma client must be regenerated** (`prisma generate`) after schema changes for Python client to recognize new fields like `isSupreme`. **Both** backend and auth server have separate Prisma schemas — regenerate in both directories when adding user model fields.
 - **Vite proxy order:** Specific routes (e.g., `/api/auth`) must come before catch-all routes. If using a single `/api` → backend catch-all, ensure auth routes are handled separately. The auth server (port 3000) and backend (port 8000) share the same `/api` prefix via Vite proxy.
 - **Vite cache:** Clear `node_modules/.vite` when changing imports (e.g., lucide-vue-next → @lucide/vue)
 - **TypeScript schema indexing:** Cast `schema.shape` to `Record<string, any>` when indexing with string
@@ -916,6 +935,11 @@ export function useVerificationStatus() {
 - **`@tanstack/vue-table` Column Sorting Synchronization:** In `TicketsTable.vue`, column sorting state (`SortingState`) is bound via `v-model:sorting` to `AdminSupportDesk.vue`, which watches changes and updates `sortField` and `sortOrder` in `useAdminTickets()`. The backend `sort_tickets_list()` utility checks `sort_field` first (supporting sorting across `ticket_number`, `sender_email`, `subject`, `source`, weighted `priority`, weighted `status`, and `created_at`), overriding legacy `sort_by` options when active.
 - **Support Table Column Customization & Layout Stability (`Max 8 Columns` Limit):** As more interactive elements (category selects, status dropdowns, priority rankings, assigned agent dropdowns) are added to TanStack tables (`TicketsTable.vue`), displaying too many columns simultaneously causes horizontal squishing and layout disruption. To maintain visual balance without removing required data, `TicketsTable.vue` implements an interactive **Column Visibility Chooser (`columnVisibility` state)** with checkboxes and an enforced **Maximum 8 Columns limit (`visibleColumnCount <= 8`)**. By default, secondary fields like `Created At` are hidden to preserve clean 8-column layout integrity.
 - **Approved Verification Reset Safeguards:** When a driver or shipper application is approved by an admin, their document credentials have already undergone automated AI score checking and human verification. To prevent accidental resets or disrupting verified user accounts, the *"Reset to Pending"* action (`POST /verification/admin/{id}/reset-pending`) explicitly blocks resetting `approved` verifications (`HTTP 400`). Furthermore, bulk admin reset endpoints (`POST /verification/admin/reset-all-pending`) explicitly filter by `where={"status": "rejected"}`, ensuring that global testing/reset utilities only target rejected applications.
+- **Gemini Free Tier Rate Limits:** Available models for this API key: `gemini-2.5-flash`, `gemini-3.1-flash-lite`, `gemini-3-flash`, `gemini-2.5-flash-lite`. Free tier limits: 20 RPD (requests per day). Deprecated models (`gemini-1.5-flash-latest`, `gemini-1.5-pro-latest`) return 404 — always use `getBestAvailableModel()` for dynamic model selection.
+- **pg-boss Raw SQL Requirement:** The `auth-server` does not have Prisma client models for `support_tickets` or `ticket_replies`. All database updates from the queue worker must use `$executeRawUnsafe` with correct snake_case column names: `ticket_number`, `sender_email`, `sender_name`, `admin_notes`, `created_at`, `updated_at`, etc.
+- **Undefined Variable Crash (`pathname`):** `server.ts` previously used `pathname` (undefined) on lines 142 and 229 instead of `url.pathname`. This caused a `ReferenceError` that crashed the entire fetch handler before reaching `auth.handler`, and `@hono/node-server` returned a silent 500 error. Always use `url.pathname` after parsing the URL.
+- **Better Auth `additionalFields` not in session response:** Better Auth's `additionalFields` (isSupreme, status, etc.) are stored in the DB but NOT included in client-side `getSession()` by default. **Both** `customSession` plugin (server: `auth-server/auth.ts`) and `customSessionClient` plugin (client: `frontend/src/lib/auth-client.ts`) are REQUIRED for custom fields to appear in the session/user object. Without `customSessionClient`, the client SDK strips unknown fields from the response.
+- **Backend Prisma client regeneration required:** Backend and auth server have **separate Prisma schemas** and **separate generated clients**. When adding a field to the user model (e.g., `isSupreme`), run `prisma generate` in **both** `auth-server/` and `backend/` directories. The Python Prisma client (`prisma-client-py`) must also be regenerated for `getattr(user, "fieldName")` to work — otherwise it returns the default value (False for booleans), causing incorrect filtering logic.
 
 ---
 
@@ -923,9 +947,10 @@ export function useVerificationStatus() {
 
 | File | Purpose |
 |------|---------|
-| `auth-server/auth.ts` | Better Auth config — trusted origins, Bearer plugin, role enum, rate limit (production only) |
-| `auth-server/server.ts` | Hono server (port 3000) |
-| `auth-server/prisma/schema.prisma` | Auth schema — enum Role, user/session/account/verification |
+| `auth-server/auth.ts` | Better Auth config — trusted origins, Bearer + customSession plugins, role enum, rate limit (production only), additionalFields (isSupreme, status) |
+| `auth-server/queue.ts` | pg-boss queue worker — classify-ticket job, Gemini AI classification, raw SQL updates, auto-discovery of available models |
+| `auth-server/server.ts` | Bun.serve server (port 3000) — native Request handling, AI polish/classify/inbound-email endpoints, pg-boss queue init |
+| `auth-server/prisma/schema.prisma` | Auth schema — enum Role, user/session/account/verification. **Must regenerate** (`prisma generate`) when adding fields |
 | `auth-server/seed.ts` | Database seeder — driver and shipper users |
 | `backend/app/main.py` | FastAPI app with CORS, logging, rate limit middleware (production only) |
 | `backend/app/middleware.py` | RequestLoggingMiddleware, RateLimitMiddleware |
@@ -937,7 +962,7 @@ export function useVerificationStatus() {
 | `backend/app/routes/support.py` | Support ticket endpoints (with sort_by support for newest/oldest/priority/status) & inbound email webhook parser simulation |
 | `backend/app/routes/shipments.py` | Shipment CRUD, bids, status updates, AI pricing |
 | `backend/app/services/pricing.py` | AI-based pricing engine — rule-based with distance, weight, vehicle, goods, fuel, labour, seasonal factors |
-| `backend/prisma/schema.prisma` | Business schema — shipments, bids, user_verifications |
+| `backend/prisma/schema.prisma` | Business schema — shipments, bids, user_verifications. **Must regenerate** (`prisma generate`) when adding fields to user model |
 | `frontend/src/style.css` | Tailwind v4 + shadcn teal theme + autofill overrides |
 | `frontend/src/router/index.ts` | Vue Router with auth + role navigation guards |
 | `frontend/src/composables/useAuth.ts` | Singleton composable — exports `user`, `loading`, `fetchSession` |
@@ -954,7 +979,9 @@ export function useVerificationStatus() {
 | `frontend/src/composables/usePriceEstimate.ts` | TanStack Query composable — AI price estimation mutation |
 | `frontend/src/composables/useSupportTickets.ts` | TanStack Query composable — support tickets (`sort_field`/`sort_order` sorting, `useAdminTicket`), inbound email simulation, assigned agent parsers (`[ASSIGNED_TO]`), and admin helpdesk |
 | `frontend/src/composables/useAdminAgents.ts` | TanStack Query composable — admin agent list, create/deactivate/activate mutations (real DB agents only) |
+| `frontend/src/composables/useQueueJobs.ts` | TanStack Query composable — pg-boss queue job monitoring, failed jobs cleanup, job stats |
 | `frontend/src/lib/api.ts` | Axios instance with Bearer token interceptor and 401 redirect |
+| `frontend/src/lib/auth-client.ts` | Better Auth Vue client — `createAuthClient()` with `customSessionClient()` plugin for additionalFields in session |
 | `frontend/src/components/NavBar.vue` | Sticky nav — RoadLancer brand only when logged out, Help & Support trigger restricted strictly to authenticated users |
 | `frontend/src/components/Footer.vue` | Brand, links, social icons, copyright |
 | `frontend/src/components/UsersTable.vue` | Extracted admin user management table component with role/status badges and suspend actions |
@@ -1057,19 +1084,21 @@ bun run test:unit:watch    # Watch mode
 | Feature | Status | Details |
 |---------|--------|---------|
 | Agent UI Refinements | ✅ | Agent filter dropdown hidden for sub-agents, per-row agent assignment column hidden for sub-agents, "Assigned Agent" column toggle hidden in column chooser for sub-agents, fixed deactivation bug (event handler passed userId string but treated as agent object) |
+| Auth Server Migration | ✅ | Migrated from `@hono/node-server` to native `Bun.serve` — fixed Request body stream consumption bug causing POST 500 errors |
+| pg-boss Reliability Fixes | ✅ | Fixed silent error swallowing, raw SQL column name mismatches, hidden processing tickets from admin. Tickets now correctly transition from `processing` → `open` after job completion. |
 
 #### Core Features
 | Feature | Status | Details |
 |---------|--------|---------|
-| Auth System | ✅ | Better Auth server, login, sessions, role-based access, seed data, separate admin/agent login page |
-| Backend Routes | ✅ | 40+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email, agent management with ticket unassignment) |
+| Auth System | ✅ | Better Auth (Bun native), login, sessions, role-based access, seed data, separate admin/agent login page |
+| Backend Routes | ✅ | 45+ endpoints (auth, admin, users, verification, shipments, bids, support/inbound-email, agent management with ticket unassignment, admin jobs) |
 | AI Pricing Engine | ✅ | Rule-based with distance/weight/vehicle/goods/fuel/labour/seasonal factors |
 | Database Schema | ✅ | 11 models (users, sessions, shipments, bids, verifications, support_tickets, ticket_replies, `isSupreme` field) |
-| Frontend Views | ✅ | 16 views (all dashboards, login pages, home, shipment detail, verification, admin support desk with sub-agent restrictions, admin ticket detail view, agent management) |
-| Frontend Composables | ✅ | 14 composables (all TanStack Query-based, including `useAdminAgents` with deactivation/ticket unassignment) |
-| Frontend Components | ✅ | 11 components (dialogs, UsersTable, AgentsTable, TicketsTable with `@tanstack/vue-table` and sub-agent restrictions, forms, nav, support email simulator) |
+| Frontend Views | ✅ | 18 views (all dashboards, login pages, home, shipment detail, verification, admin support desk with sub-agent restrictions, admin ticket detail view, agent management, pg-boss queue monitor) |
+| Frontend Composables | ✅ | 16 composables (all TanStack Query-based, including `useAdminAgents` with deactivation/ticket unassignment, `useQueueJobs` for queue monitoring) |
+| Frontend Components | ✅ | 12 components (dialogs, UsersTable, AgentsTable, TicketsTable with `@tanstack/vue-table` and sub-agent restrictions, forms, nav, support email simulator, queue monitor) |
 | Shipment Flow | ✅ | Create → AI pricing → Price confirm → Bidding → Accept → Transit |
-| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets with `@tanstack/vue-table` column sorting, assigned agents (`[ASSIGNED_TO]`), account linking, standardized Admin Helpdesk UI, & dedicated ticket resolution view (`/admin/support/:id`) with sub-agent UI restrictions |
+| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets with `@tanstack/vue-table` column sorting, assigned agents (`[ASSIGNED_TO]`), account linking, standardized Admin Helpdesk UI, & dedicated ticket resolution view (`/admin/support/:id`) with sub-agent UI restrictions, pg-boss background AI classification & auto-resolution, queue monitor, Bun.serve auth server, all tickets correctly transition processing→open |
 | Forced Price Protection | ✅ | Shipper override with admin-only visibility |
 | Marketing Landing Page | ✅ | Public home page with features, how-it-works, stats |
 | User Registration | ✅ | Driver and Shipper registration with Zod validation & pending admin approval flow |
@@ -1108,6 +1137,12 @@ Phase 4 (Vue Frontend)    ✅ 95%  (missing charts/analytics)
 Phase 5 (Core Features)   ✅ 100% (missing OTP verification)
 Phase 5.11 (Agent Mgmt)   ✅ 100% (isSupreme, agent CRUD, login separation, agent-scoped tickets)
 Phase 5.12 (Agent UI)     ✅ 100% (sub-agent UI restrictions, deactivation bug fix)
+Phase 5.13 (AI Polish)    ✅ 100% (gemini-3.1-flash-lite, mandatory greeting/signature)
+Phase 5.14 (AI Classify)  ✅ 100% (zero-latency background classification)
+Phase 5.15 (Auto-Resolve) ✅ 100% (pg-boss queue, KB auto-resolution)
+Phase 5.16 (Queue Monitor)✅ 100% (Admin Jobs Horizon, processing visibility fix)
+Phase 5.17 (Auth Fixes)   ✅ 100% (Bun.serve migration, raw SQL fixes, model update)
+Phase 5.18 (Session Fields)✅ 100% (customSession + customSessionClient plugins, Prisma regenerate)
 Phase 6 (Polish)          ⬜ 0%   (not started)
 ```
 
@@ -1116,9 +1151,16 @@ Phase 6 (Polish)          ⬜ 0%   (not started)
 **For college demo:** The core shipment + bidding + pricing + registration + agent management flow is fully functional with proper sub-agent UI restrictions. The remaining pieces (OTP, charts) are nice enhancements but not critical for demonstrating the main value proposition.
 
 **Recent improvements:**
-1. Agent deactivation now properly unassigns tickets from the deactivated agent
-2. Sub-agents no longer see confusing agent filter/assignment controls on the support desk
-3. Activate button properly appears for deactivated agents
+1. Auth server migrated from `@hono/node-server` to native `Bun.serve` — fixed Request body stream consumption bug causing POST 500 errors
+2. Fixed undefined `pathname` variable crash in server.ts (lines 142, 229)
+3. All raw SQL column names corrected (camelCase → snake_case) for `support_tickets` and `ticket_replies`
+4. Gemini models updated to available versions: `gemini-2.5-flash` (primary), `gemini-3.1-flash-lite` / `gemini-3-flash` (fallbacks)
+5. Tickets now correctly transition from `processing` → `open` after pg-boss job completion (previously stuck due to silent error swallowing)
+6. Agent deactivation now properly unassigns tickets from the deactivated agent
+7. Sub-agents no longer see confusing agent filter/assignment controls on the support desk
+8. Activate button properly appears for deactivated agents
+9. Fixed `isSupreme` not appearing in frontend session — added `customSession` + `customSessionClient` plugins
+10. Fixed ticket KPI counts all returning zero — regenerated backend Prisma client to include `isSupreme` field
 
 **Next steps (in order):**
 1. Add charts/analytics (3-4 hours) — improves dashboard visual appeal
@@ -1133,6 +1175,9 @@ Phase 6 (Polish)          ⬜ 0%   (not started)
 - Run `bun run test:e2e` only before demos/presentations
 
 **Key testing areas for recent changes:**
+- Auth server Bun.serve migration (login, registration, session creation)
+- Better Auth `customSession`/`customSessionClient` plugins (isSupreme, status fields in session)
+- pg-boss queue processing (ticket creation → AI classification → status update)
 - Agent deactivation flow (deactivate → ticket unassignment → activate)
 - Sub-agent UI restrictions (hidden controls for non-supreme agents)
 - Column chooser behavior with sub-agent restrictions

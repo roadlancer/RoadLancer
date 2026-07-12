@@ -161,6 +161,12 @@ watch(agents, (val) => {
           >
             <span>🎧</span> Support Desk & Inbound Emails
           </a>
+          <a
+            href="/admin/jobs"
+            class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-extrabold text-xs transition-all flex items-center gap-1.5"
+          >
+            <span>⚡</span> pg-boss Queue Monitor
+          </a>
         </div>
       </div>
 

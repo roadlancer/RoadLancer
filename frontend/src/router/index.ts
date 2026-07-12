@@ -14,6 +14,7 @@ import AdminSupportDesk from '@/views/AdminSupportDesk.vue'
 import AdminTicketDetailView from '@/views/AdminTicketDetailView.vue'
 import AdminAgentManagement from '@/views/AdminAgentManagement.vue'
 import AdminLoginView from '@/views/AdminLoginView.vue'
+import AdminJobsHorizonView from '@/views/AdminJobsHorizonView.vue'
 import { user, loading, fetchSession } from '@/composables/useAuth'
 
 const router = createRouter({
@@ -121,6 +122,12 @@ const router = createRouter({
       path: '/admin/agents',
       name: 'admin-agents',
       component: AdminAgentManagement,
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/jobs',
+      name: 'admin-jobs',
+      component: AdminJobsHorizonView,
       meta: { requiresAuth: true, role: 'admin' },
     },
   ],
