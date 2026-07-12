@@ -222,10 +222,10 @@ function getStatusBadgeClass(status: string) {
         <TabsContent value="email" class="space-y-4">
           <div class="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-xs text-blue-900 space-y-1">
             <div class="font-bold flex items-center gap-1.5">
-              <span>💡</span> How Inbound Email Webhook Parsing Works:
+              <span>💡</span> Real Email Integration Active
             </div>
             <p class="text-blue-800/90 leading-relaxed">
-              In production, sending an email to <strong class="font-mono underline">support@roadlancer.com</strong> triggers a webhook from our mail provider. Here, you can simulate sending an email. If your <strong class="font-mono">From Email</strong> matches your RoadLancer account, the ticket is automatically linked to your user profile!
+              Users can send emails to <strong class="font-mono underline">support@roadlancer.com</strong> and they'll be automatically converted to support tickets via Resend webhook. When agents reply, the customer receives a real email via Gmail SMTP. Below you can also simulate sending an email for testing.
             </p>
           </div>
 

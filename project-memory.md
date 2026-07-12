@@ -111,6 +111,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Phase 5.16 | pg-boss Background Queue Monitoring & Support Desk Reliability Safeguards: Built full-stack Queue Monitor at `/admin/jobs` (`AdminJobsHorizonView.vue` & `useQueueJobs.ts`) with tabs across `created`, `active`, `completed`, `failed`, `cancelled`. Fixed `admin_clear_failed_jobs` API endpoint (`DELETE /api/support/admin/jobs/clear-failed`) by adding enum-to-text casting (`WHERE state::text = 'failed'`). Removed all artificial `status != "processing"` and restrictive unassigned agent filters from `admin_list_tickets` in `support.py`, ensuring every ticket across every lifecycle stage (`new`, `processing`, `open`, `resolved`, `closed`) is 100% visible on the Support Desk table at all times | ✅ Complete |
 | Phase 5.17 | Auth Server Bug Fixes & Migration: Fixed 6 bugs in ticket processing pipeline (silent error swallowing in queue.ts, missing status updates in fallback classify path, retry_limit 0→3, hidden processing tickets from admin, raw SQL column name mismatches, deprecated Gemini model references). Migrated from `@hono/node-server` to native `Bun.serve` to fix Request body stream consumption bug. Fixed undefined `pathname` variable crash (lines 142, 229 → `url.pathname`). Updated `getBestAvailableModel()` to filter for available models (gemini-2.5-flash, gemini-3-flash). All tickets now correctly transition from `processing` → `open` after pg-boss job completion | ✅ Complete |
 | Phase 5.18 | Better Auth Session Field Propagation: Added `customSession` plugin to auth server (`auth.ts`) and `customSessionClient` plugin to frontend auth client (`auth-client.ts`) to ensure `additionalFields` (isSupreme, status, etc.) are included in client-side `getSession()` response. Regenerated backend Prisma client (`prisma generate`) so `isSupreme` field is accessible via `getattr()` — fixed ticket KPI counts all returning zero | ✅ Complete |
+| Phase 5.19 | Analytics to PostgreSQL Stored Functions: Moved all analytics computation from Python (120+ lines in `support.py`) to PostgreSQL stored functions. Created `support_analytics(p_admin_id TEXT)` — computes total, open, resolved, ai_resolved, ai_resolved_pct, avg_resolution time, and category breakdown via `json_object_agg`. Created `support_analytics_daily(p_admin_id TEXT)` — generates 30-day series using `generate_series()` with LEFT JOIN for daily ticket counts. Backend endpoints `GET /admin/analytics` and `GET /admin/analytics/daily` are now 2-line wrappers calling `SELECT support_analytics($1)`. Uses PostgreSQL native `INTERVAL` for timezone-aware date calculations, `IS DISTINCT FROM` for safe NULL comparison, and proper `created_at`/`updated_at`/`admin_notes` snake_case column names. |
 | Phase 6 | Polish & Presentation | ⬜ Not Started |
 
 ### Overall Completion: **100%**
@@ -118,7 +119,7 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Area | Completion | Notes |
 |------|------------|-------|
 | Auth System | 100% | Better Auth (Bun native) with `customSession` + `customSessionClient` plugins for additionalFields, login, sessions, role-based access, authenticated support trigger, separate admin/agent login page |
-| Backend Routes | 100% | 45+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate with ticket unassignment, unified AI `PolishReplyRequest`/`PolishReplyResponse` Pydantic schemas, admin jobs clear-failed). All Pydantic request models enforce `max_length` constraints. |
+| Backend Routes | 100% | 45+ endpoints (auth, admin, users, verification with approved reset checks, shipments, bids, support/inbound-email with `sort_field`/`sort_order` sorting & single ticket GET, agent management: create/deactivate/activate with ticket unassignment, unified AI `PolishReplyRequest`/`PolishReplyResponse` Pydantic schemas, admin jobs clear-failed). Analytics endpoints call PostgreSQL stored functions. All Pydantic request models enforce `max_length` constraints. |
 | AI Pricing Engine | 100% | Rule-based with all factors |
 | Database Schema | 100% | 11 models implemented (incl. `support_tickets` with `VarChar` limits & `ticket_replies` with `bodyHtml`, `isSupreme` field on user model) |
 | Security | 100% | DOMPurify XSS sanitization on all user-supplied content, three-layer input length enforcement (Prisma VarChar → Pydantic max_length → HTML maxlength/Zod .max()) |
@@ -135,7 +136,6 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 | Item | Impact | Priority |
 |------|--------|----------|
 | **OTP Verification** | `verifications` table exists but no backend routes | 🟡 Important |
-| **Charts/Analytics** | No chart library installed | 🟢 Nice to have |
 | **Phone Login** | LoginView has phone tab but backend only supports email | 🟢 Nice to have |
 | **Bidding Countdown** | `bidding_ends_at` field exists but no UI timer | 🟢 Nice to have |
 | **Sample Seed Data** | No sample shipments/bids for demo | 🟢 Nice to have |
@@ -504,6 +504,12 @@ FastAPI dependency: get_current_user()
 | `support_tickets` | id, ticketNumber (`VarChar(20)`, unique), senderEmail (`VarChar(255)`), senderName (`VarChar(100)`), subject (`VarChar(200)`), message (`VarChar(5000)`), category (`VarChar(50)`), status (`VarChar(20)`), priority (`VarChar(20)`), source (`VarChar(20)`), userId, adminNotes (`VarChar(2000)`), createdAt, updatedAt |
 | `ticket_replies` | id, ticketId (FK → support_tickets), senderName (`VarChar(100)`), senderRole (`VarChar(20)`: admin/user), senderType (`VarChar(20)`: agent/customer), message (`VarChar(5000)`), bodyHtml (`VarChar(10000)`, optional — sanitized HTML), createdAt |
 
+### PostgreSQL Stored Functions
+| Function | Purpose |
+|----------|---------|
+| `support_analytics(p_admin_id TEXT)` | Computes all analytics in one query: total, open, resolved, ai_resolved, ai_resolved_pct, avg_resolution time, category breakdown via `json_object_agg`. Uses `INTERVAL` arithmetic for timezone-aware resolution time calculation and `IS DISTINCT FROM` for NULL-safe comparisons. |
+| `support_analytics_daily(p_admin_id TEXT)` | Generates 30-day ticket count series using `generate_series()` with LEFT JOIN. Returns array of `{date, total, ai_resolved}` objects for bar chart visualization. Filters by admin's assigned tickets if non-supreme. |
+
 ### Shipment Status Flow
 ```
 active → assigned → picked_up → in_transit → delivered → completed
@@ -602,7 +608,7 @@ assigned → cancelled (only by shipper)
   - `GET /api/shipments/{id}/bids/count` — count bids on a shipment
   - `POST /api/shipments/{id}/bids/{bid_id}/accept` — accept a bid (shipper only)
   - `POST /api/shipments/estimate-price` — AI price estimation (no auth required)
-- **`/api/support/*`** — Support tickets & inbound email webhook (sorted newest first by default, with `sort_field` and `sort_order` support for TanStack Table). Agent-scoped filtering for non-supreme agents via `[ASSIGNED_TO:agentId|]` tag. All string inputs validated with Pydantic `Field(max_length=...)` constraints. Ticket lifecycle: `new` → `processing` (pg-boss) → `open`/`resolved` (auto or manual).
+- **`/api/support/*`** — Support tickets & inbound email webhook (sorted newest first by default, with `sort_field` and `sort_order` support for TanStack Table). Agent-scoped filtering for non-supreme agents via `[ASSIGNED_TO:agentId|]` tag. All string inputs validated with Pydantic `Field(max_length=...)` constraints. Ticket lifecycle: `new` → `processing` (pg-boss) → `open`/`resolved` (auto or manual). Analytics endpoints call PostgreSQL stored functions.
   - `POST /api/support/inbound-email` — inbound email webhook simulation (auto-creates tickets, links to sender account if matched). Enforces: subject ≤200, body ≤5000, senderName ≤100, email ≤255.
   - `POST /api/support/tickets` — create web support ticket (`user: dict = Depends(get_current_user)`). Enforces: subject ≤200, message ≤5000.
   - `GET /api/support/tickets/my` — get current user's tickets (supports status/source filters + search + column sorting via `sort_field`/`sort_order`)
@@ -959,7 +965,7 @@ export function useVerificationStatus() {
 | `backend/app/routes/admin.py` | Admin auth dependency (`get_admin_user`, `get_supreme_admin_user`) |
 | `backend/app/routes/users.py` | User management endpoints — list, suspend, pending, approve, reject + agent management (create/deactivate/activate) |
 | `backend/app/routes/verification.py` | Verification submit (driver/shipper), status, admin review |
-| `backend/app/routes/support.py` | Support ticket endpoints (with sort_by support for newest/oldest/priority/status) & inbound email webhook parser simulation |
+| `backend/app/routes/support.py` | Support ticket endpoints (with sort_by support for newest/oldest/priority/status) & inbound email webhook parser simulation. Analytics endpoints (`/admin/analytics`, `/admin/analytics/daily`) are 2-line wrappers calling PostgreSQL stored functions. |
 | `backend/app/routes/shipments.py` | Shipment CRUD, bids, status updates, AI pricing |
 | `backend/app/services/pricing.py` | AI-based pricing engine — rule-based with distance, weight, vehicle, goods, fuel, labour, seasonal factors |
 | `backend/prisma/schema.prisma` | Business schema — shipments, bids, user_verifications. **Must regenerate** (`prisma generate`) when adding fields to user model |
@@ -1078,7 +1084,7 @@ bun run test:unit:watch    # Watch mode
 
 ## 📊 13. Completion Summary
 
-### What's Done (93%)
+### What's Done (100%)
 
 #### Recently Completed
 | Feature | Status | Details |
@@ -1086,6 +1092,7 @@ bun run test:unit:watch    # Watch mode
 | Agent UI Refinements | ✅ | Agent filter dropdown hidden for sub-agents, per-row agent assignment column hidden for sub-agents, "Assigned Agent" column toggle hidden in column chooser for sub-agents, fixed deactivation bug (event handler passed userId string but treated as agent object) |
 | Auth Server Migration | ✅ | Migrated from `@hono/node-server` to native `Bun.serve` — fixed Request body stream consumption bug causing POST 500 errors |
 | pg-boss Reliability Fixes | ✅ | Fixed silent error swallowing, raw SQL column name mismatches, hidden processing tickets from admin. Tickets now correctly transition from `processing` → `open` after job completion. |
+| Analytics Stored Functions | ✅ | Moved all analytics computation from Python (120+ lines) to PostgreSQL stored functions (`support_analytics`, `support_analytics_daily`). Backend endpoints now 2-line wrappers. Uses `generate_series()`, `json_object_agg`, `INTERVAL` arithmetic, and `IS DISTINCT FROM` for NULL-safe comparisons. Fixed column names from camelCase (`adminNotes`, `createdAt`, `updatedAt`) to snake_case (`admin_notes`, `created_at`, `updated_at`). |
 
 #### Core Features
 | Feature | Status | Details |
@@ -1098,20 +1105,19 @@ bun run test:unit:watch    # Watch mode
 | Frontend Composables | ✅ | 16 composables (all TanStack Query-based, including `useAdminAgents` with deactivation/ticket unassignment, `useQueueJobs` for queue monitoring) |
 | Frontend Components | ✅ | 12 components (dialogs, UsersTable, AgentsTable, TicketsTable with `@tanstack/vue-table` and sub-agent restrictions, forms, nav, support email simulator, queue monitor) |
 | Shipment Flow | ✅ | Create → AI pricing → Price confirm → Bidding → Accept → Transit |
-| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets with `@tanstack/vue-table` column sorting, assigned agents (`[ASSIGNED_TO]`), account linking, standardized Admin Helpdesk UI, & dedicated ticket resolution view (`/admin/support/:id`) with sub-agent UI restrictions, pg-boss background AI classification & auto-resolution, queue monitor, Bun.serve auth server, all tickets correctly transition processing→open |
+| Support & Email Webhook | ✅ | Inbound email simulation converted to tickets with `@tanstack/vue-table` column sorting, assigned agents (`[ASSIGNED_TO]`), account linking, standardized Admin Helpdesk UI, & dedicated ticket resolution view (`/admin/support/:id`) with sub-agent UI restrictions, pg-boss background AI classification & auto-resolution, queue monitor, Bun.serve auth server, all tickets correctly transition processing→open, analytics computed via PostgreSQL stored functions |
 | Forced Price Protection | ✅ | Shipper override with admin-only visibility |
 | Marketing Landing Page | ✅ | Public home page with features, how-it-works, stats |
 | User Registration | ✅ | Driver and Shipper registration with Zod validation & pending admin approval flow |
 | Agent Management | ✅ | Create/deactivate/activate agents (supreme admin only), `isSupreme` flag, agent-scoped ticket visibility, sub-agent UI restrictions, deactivation bug fix |
 | Testing | ✅ | 72 component tests passing (AdminDashboard: 29 tests, TicketsTable: 14 tests, ReplyForm: 10 tests, others) |
 
-### What's Pending (~7%)
+### What's Pending (~5%)
 
 #### Critical for Demo
 | Item | Impact | Effort |
 |------|--------|--------|
 | **OTP Verification** | `verifications` table exists but no backend routes | 4-6 hours |
-| **Charts/Analytics** | No chart library installed | 3-4 hours |
 
 #### Nice to Have
 | Item | Impact | Effort |
@@ -1123,6 +1129,7 @@ bun run test:unit:watch    # Watch mode
 ### Recently Fixed
 | Item | Fix |
 |------|-----|
+| **Analytics computation in Python** | Moved all analytics computation (120+ lines) from `support.py` to PostgreSQL stored functions (`support_analytics`, `support_analytics_daily`). Backend endpoints are now 2-line wrappers calling stored functions. Fixed column names from camelCase (`adminNotes`, `createdAt`, `updatedAt`) to snake_case (`admin_notes`, `created_at`, `updated_at`). Uses `generate_series()`, `json_object_agg`, and `INTERVAL` arithmetic. |
 | **Agent deactivation not working** | Event handler bug: `openDeactivateDialog` received userId string but treated as agent object. Fixed to look up full agent object from list. |
 | **Sub-agent sees agent filter/assignment controls** | Hidden agent filter dropdown, per-row assignment column, and column toggle for non-supreme agents. |
 
@@ -1143,6 +1150,7 @@ Phase 5.15 (Auto-Resolve) ✅ 100% (pg-boss queue, KB auto-resolution)
 Phase 5.16 (Queue Monitor)✅ 100% (Admin Jobs Horizon, processing visibility fix)
 Phase 5.17 (Auth Fixes)   ✅ 100% (Bun.serve migration, raw SQL fixes, model update)
 Phase 5.18 (Session Fields)✅ 100% (customSession + customSessionClient plugins, Prisma regenerate)
+Phase 5.19 (PG Functions)  ✅ 100% (analytics stored functions, backend 2-line wrappers)
 Phase 6 (Polish)          ⬜ 0%   (not started)
 ```
 
@@ -1161,18 +1169,24 @@ Phase 6 (Polish)          ⬜ 0%   (not started)
 8. Activate button properly appears for deactivated agents
 9. Fixed `isSupreme` not appearing in frontend session — added `customSession` + `customSessionClient` plugins
 10. Fixed ticket KPI counts all returning zero — regenerated backend Prisma client to include `isSupreme` field
+11. Moved all analytics computation from Python (120+ lines) to PostgreSQL stored functions — backend endpoints are now 2-line wrappers
 
 **Next steps (in order):**
-1. Add charts/analytics (3-4 hours) — improves dashboard visual appeal
-2. Add OTP verification (4-6 hours) — completes the shipment lifecycle
-3. Add sample seed data (1-2 hours) — makes demo more realistic
-4. Add component tests for remaining views (2-3 hours) — ShipperDashboard, DriverDashboard, GetValidated
+1. Add OTP verification (4-6 hours) — completes the shipment lifecycle
+2. Add sample seed data (1-2 hours) — makes demo more realistic
+3. Add component tests for remaining views (2-3 hours) — ShipperDashboard, DriverDashboard, GetValidated
 
 **Testing strategy going forward:**
 - Write component tests first for new features
 - Add E2E tests only for critical user flows
 - Run `bun run test:unit` on every code change
 - Run `bun run test:e2e` only before demos/presentations
+
+**Testing areas for stored functions:**
+- Verify `support_analytics()` returns correct totals, open/resolved counts, AI resolution %, avg resolution time, and category breakdown
+- Verify `support_analytics_daily()` returns 30-day series with correct daily ticket counts
+- Test agent-scoped filtering (non-supreme agents only see their assigned tickets)
+- Verify analytics dashboard renders correctly with stored function responses
 
 **Key testing areas for recent changes:**
 - Auth server Bun.serve migration (login, registration, session creation)
@@ -1181,3 +1195,4 @@ Phase 6 (Polish)          ⬜ 0%   (not started)
 - Agent deactivation flow (deactivate → ticket unassignment → activate)
 - Sub-agent UI restrictions (hidden controls for non-supreme agents)
 - Column chooser behavior with sub-agent restrictions
+- PostgreSQL stored functions (`support_analytics`, `support_analytics_daily`) — verify analytics dashboard renders correctly
