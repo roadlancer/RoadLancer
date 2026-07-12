@@ -4,15 +4,19 @@ import time
 import traceback
 import uuid
 import asyncio
+import hmac
+import hashlib
+import base64
 import httpx
 import json
 from datetime import datetime, timezone
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from app.database import db
 from app.routes.auth import get_current_user
 from app.routes.admin import get_admin_user
+from app.email import send_reply_email
 
 router = APIRouter()
 
@@ -315,6 +319,129 @@ async def simulate_inbound_email(
         "ticket_number": ticket_number,
         "ticket": ticket_to_dict(ticket, user_map),
         "message": f"Inbound email from {req.from_email} converted to ticket #{ticket_number}",
+    }
+
+
+def _verify_resend_signature(payload: bytes, headers: dict, secret: str) -> bool:
+    """Verify Resend webhook HMAC-SHA256 signature (Svix format)."""
+    svix_id = headers.get("svix-id", "")
+    svix_timestamp = headers.get("svix-timestamp", "")
+    svix_signature = headers.get("svix-signature", "")
+
+    if not all([svix_id, svix_timestamp, svix_signature]):
+        return False
+
+    to_sign = f"{svix_id}.{svix_timestamp}.{payload.decode('utf-8', errors='replace')}"
+    secret_bytes = secret.encode("utf-8")
+    expected = hmac.new(secret_bytes, to_sign.encode("utf-8"), hashlib.sha256).digest()
+    expected_b64 = base64.b64encode(expected).decode("utf-8")
+
+    for sig_part in svix_signature.split(" "):
+        if hmac.compare_digest(f"v1,{expected_b64}", sig_part):
+            return True
+    return False
+
+
+@router.post("/webhook/resend")
+async def handle_resend_webhook(request: Request):
+    """
+    Webhook endpoint for Resend inbound emails.
+    Receives email.received events, fetches full email content, and creates support ticket.
+    """
+    webhook_secret = os.getenv("RESEND_WEBHOOK_SECRET", "")
+    if not webhook_secret:
+        raise HTTPException(status_code=500, detail="RESEND_WEBHOOK_SECRET not configured")
+
+    raw_body = await request.body()
+
+    if not _verify_resend_signature(raw_body, dict(request.headers), webhook_secret):
+        raise HTTPException(status_code=403, detail="Invalid webhook signature")
+
+    try:
+        event = json.loads(raw_body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    event_type = event.get("type")
+    if event_type != "email.received":
+        return {"received": True, "ignored": True, "type": event_type}
+
+    email_id = event.get("data", {}).get("email_id")
+    if not email_id:
+        raise HTTPException(status_code=400, detail="Missing email_id in webhook data")
+
+    resend_api_key = os.getenv("RESEND_API_KEY", "")
+    if not resend_api_key:
+        raise HTTPException(status_code=500, detail="RESEND_API_KEY not configured")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"https://api.resend.com/emails/{email_id}",
+                headers={"Authorization": f"Bearer {resend_api_key}"},
+            )
+            if resp.status_code != 200:
+                print(f"❌ [resend-webhook] Failed to fetch email {email_id}: {resp.status_code} {resp.text}")
+                raise HTTPException(status_code=502, detail=f"Failed to fetch email from Resend: {resp.status_code}")
+            email_data = resp.json()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout fetching email from Resend")
+
+    from_email = email_data.get("from", "")
+    subject = email_data.get("subject", "No Subject")
+    text_body = email_data.get("text", "")
+    html_body = email_data.get("html", "")
+    body = text_body or html_body or ""
+
+    if not from_email:
+        raise HTTPException(status_code=400, detail="Missing sender email")
+
+    user = await db.user.find_unique(where={"email": from_email.lower()})
+    user_id = user.id if user else None
+    sender_name = (user.name if user else None) or from_email.split("@")[0]
+
+    last_exc = None
+    for _attempt in range(3):
+        try:
+            ticket_number = await generate_unique_ticket_number()
+            ticket = await db.support_tickets.create(
+                data={
+                    "ticketNumber": ticket_number,
+                    "senderEmail": from_email.lower(),
+                    "senderName": sender_name,
+                    "subject": subject[:200],
+                    "message": body[:5000],
+                    "category": "general",
+                    "priority": "normal",
+                    "source": "email",
+                    "userId": user_id,
+                    "status": "new",
+                }
+            )
+            asyncio.create_task(classify_ticket_background(ticket.id, subject[:200], body[:5000], sender_name))
+            break
+        except Exception as e:
+            last_exc = e
+            err_msg = str(e)
+            if "relation \"support_tickets\" does not exist" in err_msg or "table \"support_tickets\" does not exist" in err_msg.lower():
+                raise HTTPException(status_code=500, detail="Table 'support_tickets' does not exist")
+            if isinstance(e, AttributeError) and _attempt < 2:
+                print(f"⚠️ [resend-webhook] Transient Prisma error (attempt {_attempt + 1}/3): {e}")
+                await asyncio.sleep(0.5 * (_attempt + 1))
+                continue
+            print(f"❌ [resend-webhook] Exception during ticket creation: {e}")
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Database error: {err_msg}")
+    else:
+        raise HTTPException(status_code=500, detail=f"Database error after retries: {last_exc}")
+
+    user_map = {user_id: user} if user else {}
+    print(f"✅ [resend-webhook] Ticket #{ticket_number} created from email by {from_email}")
+    return {
+        "success": True,
+        "ticket_number": ticket_number,
+        "ticket": ticket_to_dict(ticket, user_map),
+        "message": f"Inbound email from {from_email} converted to ticket #{ticket_number}",
     }
 
 
@@ -821,6 +948,36 @@ async def admin_create_ticket_reply(
     if ticket.status == "open":
         await db.support_tickets.update(
             where={"id": ticket.id}, data={"status": "in_progress"}
+        )
+
+    if ticket.senderEmail:
+        html_email = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: #0d9488; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0;">
+                <h2 style="margin: 0; font-size: 16px;">RoadLancer Support</h2>
+                <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Ticket #{ticket.ticketNumber}</p>
+            </div>
+            <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
+                <p style="color: #374151; font-size: 14px;">Hi {ticket.senderName or ''},</p>
+                <p style="color: #374151; font-size: 14px;">{sender_name} has replied to your support ticket:</p>
+                <div style="background: white; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
+                    <p style="color: #1f2937; font-size: 14px; white-space: pre-wrap;">{req.message.strip()}</p>
+                </div>
+                <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
+                    View and reply in the <a href="http://localhost:5173/admin/support/{ticket.ticketNumber}" style="color: #0d9488;">RoadLancer Support Portal</a>
+                </p>
+            </div>
+        </div>
+        """
+        asyncio.create_task(
+            asyncio.to_thread(
+                send_reply_email,
+                ticket.senderEmail,
+                ticket.subject,
+                html_email,
+                ticket.ticketNumber,
+                sender_name,
+            )
         )
 
     users = await db.user.find_many()
