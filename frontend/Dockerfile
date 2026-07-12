@@ -13,8 +13,7 @@ FROM oven/bun:latest
 WORKDIR /app
 
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package.json ./
 
 EXPOSE 4173
 
-CMD ["sh", "-c", "bun run preview --port ${PORT:-4173} --host 0.0.0.0"]
+CMD ["sh", "-c", "bunx serve dist -l ${PORT:-4173} --no-clipboard"]
