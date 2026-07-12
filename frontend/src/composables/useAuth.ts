@@ -28,7 +28,7 @@ export async function fetchSession(force = false) {
   fetchPromise = (async () => {
     try {
       const timeoutPromise = new Promise<{ data: any }>((_, reject) =>
-        setTimeout(() => reject(new Error('Auth request timed out')), 3000)
+        setTimeout(() => reject(new Error('Auth request timed out')), 10000)
       )
       const sessionPromise = authClient.getSession()
       const { data } = await Promise.race([sessionPromise, timeoutPromise])
