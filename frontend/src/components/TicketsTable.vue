@@ -79,14 +79,19 @@ function handleRowCategory(ticket: SupportTicket, event: Event) {
 function getCategoryBadgeClass(category?: string) {
   switch (category) {
     case 'verification':
+    case 'verification_kyc':
       return 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300'
     case 'billing':
+    case 'billing_payment':
       return 'bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
     case 'shipments':
+    case 'shipment_tracking':
       return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300'
     case 'technical':
+    case 'logistics_breakdown':
       return 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300'
     case 'account':
+    case 'account_access':
       return 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300'
     default:
       return 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800 dark:text-slate-300'
@@ -496,11 +501,16 @@ const table = useVueTable({
                 title="Change category right from the table"
               >
                 <option value="general">General</option>
-                <option value="verification">Verification</option>
-                <option value="billing">Billing</option>
-                <option value="shipments">Shipments</option>
-                <option value="technical">Technical</option>
-                <option value="account">Account</option>
+                <option value="logistics_breakdown">Logistics Breakdown</option>
+                <option value="billing_payment">Billing & Payment</option>
+                <option value="verification_kyc">Verification & KYC</option>
+                <option value="shipment_tracking">Shipment Tracking</option>
+                <option value="account_access">Account Access</option>
+                <option value="verification">Verification (Legacy)</option>
+                <option value="billing">Billing (Legacy)</option>
+                <option value="shipments">Shipments (Legacy)</option>
+                <option value="technical">Technical (Legacy)</option>
+                <option value="account">Account (Legacy)</option>
               </select>
             </td>
             <!-- Priority -->
