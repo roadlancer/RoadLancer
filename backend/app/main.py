@@ -40,9 +40,15 @@ import os
 app.add_middleware(RequestLoggingMiddleware)
 if os.getenv("ENV") == "production":
     app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
+
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:4173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
