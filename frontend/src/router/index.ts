@@ -15,6 +15,7 @@ import AdminTicketDetailView from '@/views/AdminTicketDetailView.vue'
 import AdminAgentManagement from '@/views/AdminAgentManagement.vue'
 import AdminLoginView from '@/views/AdminLoginView.vue'
 import AdminJobsHorizonView from '@/views/AdminJobsHorizonView.vue'
+import SupportAnalytics from '@/views/SupportAnalytics.vue'
 import { user, loading, fetchSession } from '@/composables/useAuth'
 
 const router = createRouter({
@@ -110,6 +111,12 @@ const router = createRouter({
       path: '/admin/support',
       name: 'admin-support',
       component: AdminSupportDesk,
+      meta: { requiresAuth: true, role: 'admin' },
+    },
+    {
+      path: '/admin/support/analytics',
+      name: 'admin-support-analytics',
+      component: SupportAnalytics,
       meta: { requiresAuth: true, role: 'admin' },
     },
     {

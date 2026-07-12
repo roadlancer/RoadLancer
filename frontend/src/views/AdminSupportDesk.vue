@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   useAdminTickets,
   type SupportTicket,
@@ -26,9 +27,11 @@ import {
   Search,
   XCircle,
   Activity,
+  BarChart3,
 } from '@lucide/vue'
 
 const { user } = useAuth()
+const router = useRouter()
 
 const {
   tickets,
@@ -389,6 +392,17 @@ function getStatusBadgeClass(status: string) {
               <CardTitle class="mr-1 text-lg font-bold text-foreground">Support Desk & Inbound Email Queue</CardTitle>
             </div>
             <div class="flex flex-wrap items-center gap-2.5">
+              <!-- Analytics Button -->
+              <Button
+                variant="outline"
+                size="sm"
+                class="h-9 text-xs font-semibold"
+                @click="router.push('/admin/support/analytics')"
+              >
+                <BarChart3 class="size-3.5 mr-1.5" />
+                Analytics
+              </Button>
+
               <!-- Search box -->
               <div class="relative">
                 <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
