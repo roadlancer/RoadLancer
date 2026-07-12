@@ -54,7 +54,7 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    const { error: signInError } = await signIn.email({
+    const { data: signInData, error: signInError } = await signIn.email({
       email: form.email,
       password: form.password,
     })
@@ -65,6 +65,10 @@ async function handleSubmit() {
     }
 
     await fetchSession(true)
+
+    if (!user.value && signInData?.user) {
+      user.value = signInData.user as any
+    }
 
     const actualRole = user.value?.role
     const userStatus = (user.value as any)?.status
