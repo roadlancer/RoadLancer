@@ -17,4 +17,4 @@ COPY --from=builder /app/package.json ./
 
 EXPOSE 4173
 
-CMD ["bun", "run", "preview", "--port", "4173", "--host", "0.0.0.0"]
+CMD ["sh", "-c", "bun run preview --port ${PORT:-4173} --host 0.0.0.0"]

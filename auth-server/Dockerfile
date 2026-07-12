@@ -12,4 +12,4 @@ COPY . .
 
 EXPOSE 3000
 
-CMD ["bun", "server.ts"]
+CMD ["sh", "-c", "bunx prisma generate && bun server.ts"]
