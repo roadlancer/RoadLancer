@@ -32,19 +32,3 @@ export const authClient = createAuthClient({
 })
 
 export const { signIn, signUp, signOut, useSession } = authClient
-
-const originalFetch = window.fetch.bind(window)
-window.fetch = async (...args) => {
-  const response = await originalFetch(...args)
-  try {
-    if (response instanceof Response) {
-      const token = response.headers.get('set-auth-token')
-      if (token) {
-        setStoredToken(token)
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return response
-}

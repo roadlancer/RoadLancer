@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { ref, reactive } from 'vue'
 import { z } from 'zod'
-import { signUp } from '@/lib/auth-client'
+import { signUp, setStoredToken } from '@/lib/auth-client'
 import { fetchSession } from '@/composables/useAuth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -87,7 +87,7 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    const { error: signUpError } = await signUp.email({
+    const { data: signUpData, error: signUpError } = await signUp.email({
       email: form.email,
       password: form.password,
       name: form.name,
@@ -98,6 +98,12 @@ async function handleSubmit() {
     if (signUpError) {
       submitError.value = signUpError.message || 'Registration failed. Please try again or use a different email/phone.'
       return
+    }
+
+    // Store the session token from signUp response (better-auth bearer plugin)
+    const signUpToken = signUpData?.session?.token
+    if (signUpToken) {
+      setStoredToken(signUpToken)
     }
 
     await fetchSession(true)

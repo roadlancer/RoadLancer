@@ -2,7 +2,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { z } from 'zod'
-import { signIn } from '@/lib/auth-client'
+import { signIn, setStoredToken } from '@/lib/auth-client'
 import { useAuth, user } from '@/composables/useAuth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -64,12 +64,20 @@ async function handleSubmit() {
       return
     }
 
-    if (!user.value && signInData?.user) {
+    // Store the session token from signIn response (better-auth bearer plugin)
+    const signInToken = signInData?.session?.token
+    if (signInToken) {
+      setStoredToken(signInToken)
+    }
+
+    // Set user from signIn response if available
+    if (signInData?.user) {
       user.value = signInData.user as any
     }
 
     await fetchSession(true)
 
+    // Fallback: if user still null, use signIn response data
     if (!user.value && signInData?.user) {
       user.value = signInData.user as any
     }
@@ -79,7 +87,6 @@ async function handleSubmit() {
 
     if (actualRole !== 'admin') {
       submitError.value = 'Access denied. This login is for admin/agent accounts only.'
-      await signIn.email({ email: form.email, password: form.password }).catch(() => {})
       user.value = null
       return
     }

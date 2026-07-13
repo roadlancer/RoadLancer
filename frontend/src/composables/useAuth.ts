@@ -20,11 +20,6 @@ let requestId = 0
 
 export { user, loading }
 
-function authHeaders(): Record<string, string> {
-  const token = getStoredToken()
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
 export async function fetchSession(force = false) {
   if (fetchPromise && !force) {
     return fetchPromise
@@ -37,12 +32,15 @@ export async function fetchSession(force = false) {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Auth request timed out')), 10000)
       )
+
+      const storedToken = getStoredToken()
       const sessionPromise = authClient.getSession({
         fetchOptions: {
           credentials: 'include',
-          headers: authHeaders(),
+          ...(storedToken ? { headers: { Authorization: `Bearer ${storedToken}` } } : {}),
         },
       } as any)
+
       const result = await Promise.race([sessionPromise, timeoutPromise])
       const data = result?.data ?? result
       if (currentRequestId === requestId) {
@@ -79,7 +77,6 @@ export function useAuth() {
       await authClient.signOut({
         fetchOptions: {
           credentials: 'include',
-          headers: authHeaders(),
         },
       } as any)
     } catch {

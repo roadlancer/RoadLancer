@@ -2,7 +2,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { z } from 'zod'
-import { signIn, authClient } from '@/lib/auth-client'
+import { signIn, authClient, setStoredToken } from '@/lib/auth-client'
 import { useAuth, user } from '@/composables/useAuth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -75,12 +75,20 @@ async function handleSubmit() {
       return
     }
 
-    if (!user.value && signInData?.user) {
+    // Store the session token from signIn response (better-auth bearer plugin)
+    const signInToken = signInData?.session?.token
+    if (signInToken) {
+      setStoredToken(signInToken)
+    }
+
+    // Set user from signIn response if available
+    if (signInData?.user) {
       user.value = signInData.user as any
     }
 
     await fetchSession(true)
 
+    // Fallback: if user still null, use signIn response data
     if (!user.value && signInData?.user) {
       user.value = signInData.user as any
     }
@@ -91,6 +99,7 @@ async function handleSubmit() {
     if (actualRole && actualRole !== form.role) {
       submitError.value = 'Invalid email, password, or role selection.'
       await authClient.signOut()
+      setStoredToken(null)
       user.value = null
       return
     }
@@ -98,6 +107,7 @@ async function handleSubmit() {
     if (userStatus === 'rejected') {
       submitError.value = 'Your account has been rejected. Please contact support.'
       await authClient.signOut()
+      setStoredToken(null)
       user.value = null
       return
     }
