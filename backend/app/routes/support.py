@@ -970,8 +970,7 @@ async def admin_create_ticket_reply(
         </div>
         """
         asyncio.create_task(
-            asyncio.to_thread(
-                send_reply_email,
+            send_reply_email(
                 ticket.senderEmail,
                 ticket.subject,
                 html_email,
@@ -1061,12 +1060,11 @@ async def user_create_ticket_reply(
 
 @router.get("/test-email")
 async def test_email_endpoint():
-    """Test endpoint to verify Gmail SMTP SSL works on Railway."""
-    result = await asyncio.to_thread(
-        send_reply_email,
+    """Test endpoint to verify email sending works on Railway."""
+    result = await send_reply_email(
         "support.roadlancer@gmail.com",
         "Test Email from RoadLancer",
-        "<h1>Test</h1><p>If you see this, Gmail SMTP SSL (port 465) works on Railway!</p>",
+        "<h1>Test</h1><p>If you see this, email sending works on Railway via Resend!</p>",
         "TICK-TEST",
         "RoadLancer Test",
     )
