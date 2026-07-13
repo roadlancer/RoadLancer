@@ -1,6 +1,6 @@
 """
 Gmail API client for sending and receiving emails.
-Uses Google Service Account with Domain-wide Delegation for production.
+Supports both token-based auth (development) and service account (production).
 """
 import os
 import base64
@@ -9,47 +9,69 @@ import logging
 from email.message import EmailMessage
 from typing import Optional
 
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 logger = logging.getLogger(__name__)
 
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.modify",
-]
-
 _gmail_service = None
 
 
 def _get_gmail_service():
-    """Get or create Gmail API service using service account credentials."""
+    """Get or create Gmail API service using token or service account."""
     global _gmail_service
     if _gmail_service:
         return _gmail_service
 
-    service_account_json = os.getenv("GMAIL_SERVICE_ACCOUNT_JSON", "")
     gmail_user = os.getenv("GMAIL_USER_EMAIL", "support.roadlancer@gmail.com")
 
-    if not service_account_json:
-        logger.warning("GMAIL_SERVICE_ACCOUNT_JSON not configured")
-        return None
+    # Try token-based auth first (simpler, works with refresh token)
+    token_json = os.getenv("GMAIL_TOKEN_JSON", "")
+    if token_json:
+        try:
+            token_data = json.loads(token_json)
+            creds = Credentials(
+                token=token_data.get("token", ""),
+                refresh_token=token_data.get("refresh_token", ""),
+                token_uri=token_data.get("token_uri", "https://oauth2.googleapis.com/token"),
+                client_id=token_data.get("client_id", ""),
+                client_secret=token_data.get("client_secret", ""),
+                scopes=token_data.get("scopes", []),
+            )
+            if creds.expired or not creds.valid:
+                creds.refresh(Request())
+            _gmail_service = build("gmail", "v1", credentials=creds)
+            logger.info(f"Gmail API service created (token-based) for {gmail_user}")
+            return _gmail_service
+        except Exception as e:
+            logger.error(f"Failed to create Gmail service from token: {e}")
 
-    try:
-        creds_info = json.loads(service_account_json)
-        credentials = service_account.Credentials.from_service_account_info(
-            creds_info, scopes=SCOPES
-        )
-        # Impersonate the Gmail user (requires Domain-wide Delegation)
-        delegated_credentials = credentials.with_subject(gmail_user)
-        _gmail_service = build("gmail", "v1", credentials=delegated_credentials)
-        logger.info(f"Gmail API service created for {gmail_user}")
-        return _gmail_service
-    except Exception as e:
-        logger.error(f"Failed to create Gmail service: {e}")
-        return None
+    # Try service account auth
+    service_account_json = os.getenv("GMAIL_SERVICE_ACCOUNT_JSON", "")
+    if service_account_json:
+        try:
+            from google.oauth2 import service_account
+
+            SCOPES = [
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/gmail.send",
+                "https://www.googleapis.com/auth/gmail.modify",
+            ]
+            creds_info = json.loads(service_account_json)
+            credentials = service_account.Credentials.from_service_account_info(
+                creds_info, scopes=SCOPES
+            )
+            delegated_credentials = credentials.with_subject(gmail_user)
+            _gmail_service = build("gmail", "v1", credentials=delegated_credentials)
+            logger.info(f"Gmail API service created (service account) for {gmail_user}")
+            return _gmail_service
+        except Exception as e:
+            logger.error(f"Failed to create Gmail service from service account: {e}")
+
+    logger.warning("Gmail API not configured (no GMAIL_TOKEN_JSON or GMAIL_SERVICE_ACCOUNT_JSON)")
+    return None
 
 
 def send_email_via_gmail(
@@ -64,7 +86,6 @@ def send_email_via_gmail(
     service = _get_gmail_service()
 
     if not service:
-        logger.warning("Gmail service not available, falling back to Resend")
         return False
 
     try:
@@ -109,7 +130,10 @@ def fetch_email_by_id(email_id: str) -> Optional[dict]:
             .execute()
         )
 
-        headers = {h["name"].lower(): h["value"] for h in message.get("payload", {}).get("headers", [])}
+        headers = {
+            h["name"].lower(): h["value"]
+            for h in message.get("payload", {}).get("headers", [])
+        }
 
         body = ""
         payload = message.get("payload", {})
