@@ -1064,9 +1064,103 @@ async def test_email_endpoint():
     result = await send_reply_email(
         "support.roadlancer@gmail.com",
         "Test Email from RoadLancer",
-        "<h1>Test</h1><p>If you see this, email sending works on Railway via Resend!</p>",
+        "<h1>Test</h1><p>If you see this, email sending works on Railway!</p>",
         "TICK-TEST",
         "RoadLancer Test",
     )
     return {"email_sent": result}
+
+
+@router.post("/webhook/gmail")
+async def handle_gmail_pubsub(request: Request):
+    """
+    Webhook endpoint for Gmail Pub/Sub push notifications.
+    When a new email arrives in support.roadlancer@gmail.com, Google sends
+    a notification here. We fetch the email via Gmail API and create a ticket.
+    """
+    try:
+        raw_body = await request.body()
+        payload = json.loads(raw_body)
+
+        message_data = payload.get("message", {})
+        data_encoded = message_data.get("data", "")
+
+        if not data_encoded:
+            return {"received": True, "ignored": True, "reason": "no data"}
+
+        import base64 as b64
+        data_json = json.loads(b64.b64decode(data_encoded).decode("utf-8"))
+        email_address = data_json.get("emailAddress", "")
+        history_id = data_json.get("historyId", "")
+
+        logger.info(f"Gmail notification: email={email_address}, historyId={history_id}")
+
+        from app.gmail_client import list_recent_emails, mark_email_as_read
+
+        emails = list_recent_emails(max_results=5)
+
+        created_tickets = []
+        for email in emails:
+            from_email = email.get("from", "")
+            subject = email.get("subject", "No Subject")
+            body = email.get("body", "") or email.get("snippet", "")
+
+            if not from_email or not subject:
+                continue
+
+            user = await db.user.find_unique(where={"email": from_email.lower()})
+            user_id = user.id if user else None
+            sender_name = (user.name if user else None) or from_email.split("@")[0].replace(".", " ").title()
+
+            ticket_number = await generate_unique_ticket_number()
+
+            try:
+                ticket = await db.support_tickets.create(
+                    data={
+                        "ticketNumber": ticket_number,
+                        "senderEmail": from_email.lower(),
+                        "senderName": sender_name,
+                        "subject": subject[:200],
+                        "message": body[:5000],
+                        "category": "general",
+                        "priority": "normal",
+                        "source": "email",
+                        "userId": user_id,
+                        "status": "new",
+                    }
+                )
+                asyncio.create_task(classify_ticket_background(ticket.id, subject[:200], body[:5000], sender_name))
+                created_tickets.append(ticket_number)
+                logger.info(f"Created ticket {ticket_number} from Gmail email by {from_email}")
+            except Exception as e:
+                logger.error(f"Failed to create ticket from email: {e}")
+
+        return {
+            "received": True,
+            "tickets_created": created_tickets,
+            "count": len(created_tickets),
+        }
+
+    except Exception as e:
+        logger.error(f"Gmail webhook error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Gmail webhook error: {str(e)}")
+
+
+@router.get("/gmail/status")
+async def gmail_status():
+    """Check Gmail API connection status."""
+    from app.gmail_client import _get_gmail_service
+
+    service = _get_gmail_service()
+    gmail_user = os.getenv("GMAIL_USER_EMAIL", "")
+    service_account = os.getenv("GMAIL_SERVICE_ACCOUNT_JSON", "")
+
+    return {
+        "configured": bool(service),
+        "gmail_user": gmail_user,
+        "service_account_set": bool(service_account),
+        "service_alive": service is not None,
+    }
+
 
