@@ -80,8 +80,11 @@ def send_email_via_gmail(
     html_body: str,
     ticket_number: str,
     sender_name: str = "RoadLancer Support",
+    thread_id: Optional[str] = None,
+    in_reply_to: Optional[str] = None,
+    references: Optional[str] = None,
 ) -> bool:
-    """Send an email using Gmail API."""
+    """Send an email using Gmail API. Supports threading via thread_id and In-Reply-To."""
     gmail_user = os.getenv("GMAIL_USER_EMAIL", "support.roadlancer@gmail.com")
     service = _get_gmail_service()
 
@@ -96,16 +99,25 @@ def send_email_via_gmail(
         message["subject"] = f"Re: [{ticket_number}] {subject}"
         message["reply-to"] = gmail_user
 
+        if in_reply_to:
+            message["In-Reply-To"] = in_reply_to
+        if references:
+            message["References"] = references
+
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+
+        body = {"raw": raw_message}
+        if thread_id:
+            body["threadId"] = thread_id
 
         result = (
             service.users()
             .messages()
-            .send(userId="me", body={"raw": raw_message})
+            .send(userId="me", body=body)
             .execute()
         )
 
-        logger.info(f"Email sent to {to_email} for ticket {ticket_number}, id: {result.get('id')}")
+        logger.info(f"Email sent to {to_email} for ticket {ticket_number}, id: {result.get('id')}, thread: {thread_id or 'new'}")
         return True
 
     except HttpError as e:

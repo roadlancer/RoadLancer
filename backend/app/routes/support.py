@@ -30,6 +30,8 @@ class InboundEmailRequest(BaseModel):
     priority: Optional[str] = Field(default="normal", max_length=20)
     source: Optional[str] = Field(default="email", max_length=20)
     secret: Optional[str] = None
+    gmail_thread_id: Optional[str] = None
+    gmail_message_id: Optional[str] = None
 
 
 class CreateTicketRequest(BaseModel):
@@ -289,6 +291,8 @@ async def simulate_inbound_email(
                     "source": req.source or "email",
                     "userId": user_id,
                     "status": "new",
+                    "gmailThreadId": req.gmail_thread_id,
+                    "gmailMessageId": req.gmail_message_id,
                 }
             )
             asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.body, sender_name))
@@ -977,6 +981,8 @@ async def admin_create_ticket_reply(
                 html_email,
                 ticket.ticketNumber,
                 sender_name,
+                gmail_thread_id=getattr(ticket, 'gmailThreadId', None),
+                gmail_message_id=getattr(ticket, 'gmailMessageId', None),
             )
         )
 

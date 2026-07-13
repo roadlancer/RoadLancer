@@ -229,20 +229,22 @@ model user_verifications {
 }
 
 model support_tickets {
-  id           String   @id @default(uuid())
-  ticketNumber String   @unique @map("ticket_number") @db.VarChar(20)
-  senderEmail  String   @map("sender_email") @db.VarChar(255)
-  senderName   String?  @map("sender_name") @db.VarChar(100)
-  subject      String   @db.VarChar(200)
-  message      String   @db.VarChar(5000)
-  category     String   @default("general") @db.VarChar(50)
-  status       String   @default("open") @db.VarChar(20)
-  priority     String   @default("normal") @db.VarChar(20)
-  source       String   @default("email") @db.VarChar(20)
-  userId       String?  @map("user_id")
-  adminNotes   String?  @map("admin_notes") @db.VarChar(2000)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  ticketNumber    String   @unique @map("ticket_number") @db.VarChar(20)
+  senderEmail     String   @map("sender_email") @db.VarChar(255)
+  senderName      String?  @map("sender_name") @db.VarChar(100)
+  subject         String   @db.VarChar(200)
+  message         String   @db.VarChar(5000)
+  category        String   @default("general") @db.VarChar(50)
+  status          String   @default("open") @db.VarChar(20)
+  priority        String   @default("normal") @db.VarChar(20)
+  source          String   @default("email") @db.VarChar(20)
+  userId          String?  @map("user_id")
+  adminNotes      String?  @map("admin_notes") @db.VarChar(2000)
+  gmailThreadId   String?  @map("gmail_thread_id") @db.Text
+  gmailMessageId  String?  @map("gmail_message_id") @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   user    user?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   replies ticket_replies[]

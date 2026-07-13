@@ -1,38 +1,10 @@
-# Environment
-.env
-.env.*
-!.env.example
-.env.backup
-*.env
-
-# Node
 node_modules/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.venv/
-*.egg-info/
 dist/
-build/
-
-# Prisma
-auth-server/src/generated/
-
-# Playwright
-frontend/tests/test-results/
-frontend/playwright-report/
-frontend/blob-report/
-frontend/.auth/
-
-# IDEs
-.vscode/
-.idea/
-.fleet/
-.zed/
-.nova/
-
-# OS
-.DS_Store
-Thumbs.db
+.env
+.env.local
+.env.production
+*.pyc
+__pycache__/
+prisma/migrations/
+credentials.json
+token.json
