@@ -4,6 +4,9 @@ import { customSessionClient } from 'better-auth/client/plugins'
 export const authClient = createAuthClient({
   baseURL: import.meta.env.VITE_AUTH_URL || '',
   plugins: [customSessionClient()],
+  fetchOptions: {
+    credentials: 'include',
+  },
 })
 
 export const { signIn, signUp, signOut, useSession } = authClient

@@ -968,7 +968,7 @@ async def admin_create_ticket_reply(
                     <p style="color: #1f2937; font-size: 14px; white-space: pre-wrap;">{req.message.strip()}</p>
                 </div>
                 <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
-                    View and reply in the <a href="http://localhost:5173/admin/support/{ticket.ticketNumber}" style="color: #0d9488;">RoadLancer Support Portal</a>
+                    You can reply directly to this email to continue the conversation.
                 </p>
             </div>
         </div>
