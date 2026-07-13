@@ -12,11 +12,7 @@ api.interceptors.request.use(async (config) => {
     return config
   }
   try {
-    const { data: sessionData } = await authClient.getSession({
-      fetchOptions: {
-        credentials: 'include',
-      } as any,
-    } as any)
+    const { data: sessionData } = await authClient.getSession()
     const sessionToken = (sessionData as any)?.session?.token
     if (sessionToken) {
       config.headers.Authorization = `Bearer ${sessionToken}`

@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { authClient, getStoredToken, setStoredToken, authFetchOptions } from '@/lib/auth-client'
+import { authClient, getStoredToken, setStoredToken } from '@/lib/auth-client'
 import api from '@/lib/api'
 
 interface User {
@@ -20,19 +20,9 @@ let requestId = 0
 
 export { user, loading }
 
-export function extractAndStoreToken(response: any) {
-  try {
-    const token = response?.headers?.get?.('set-auth-token')
-      || response?.response?.headers?.get?.('set-auth-token')
-      || null
-    if (token) {
-      setStoredToken(token)
-      return token
-    }
-  } catch {
-    // ignore
-  }
-  return null
+function authHeaders(): Record<string, string> {
+  const token = getStoredToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
 export async function fetchSession(force = false) {
@@ -44,11 +34,14 @@ export async function fetchSession(force = false) {
   loading.value = true
   fetchPromise = (async () => {
     try {
-      const timeoutPromise = new Promise<{ data: any }>((_, reject) =>
+      const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Auth request timed out')), 10000)
       )
       const sessionPromise = authClient.getSession({
-        fetchOptions: authFetchOptions(),
+        fetchOptions: {
+          credentials: 'include',
+          headers: authHeaders(),
+        },
       } as any)
       const result = await Promise.race([sessionPromise, timeoutPromise])
       const data = result?.data ?? result
@@ -83,7 +76,12 @@ export function useAuth() {
       // ignore backend errors, still sign out locally
     }
     try {
-      await authClient.signOut({ fetchOptions: authFetchOptions() } as any)
+      await authClient.signOut({
+        fetchOptions: {
+          credentials: 'include',
+          headers: authHeaders(),
+        },
+      } as any)
     } catch {
       // ignore
     }

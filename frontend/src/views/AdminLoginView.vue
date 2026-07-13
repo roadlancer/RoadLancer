@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { z } from 'zod'
 import { signIn } from '@/lib/auth-client'
 import { useAuth, user } from '@/composables/useAuth'
-import { setStoredToken } from '@/lib/auth-client'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -55,20 +54,10 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    const { data: signInData, error: signInError } = await signIn.email(
-      {
-        email: form.email,
-        password: form.password,
-      },
-      {
-        onSuccess: (ctx: any) => {
-          const token = ctx?.response?.headers?.get?.('set-auth-token')
-            || ctx?.headers?.get?.('set-auth-token')
-            || ''
-          if (token) setStoredToken(token)
-        },
-      } as any,
-    )
+    const { data: signInData, error: signInError } = await signIn.email({
+      email: form.email,
+      password: form.password,
+    })
 
     if (signInError) {
       submitError.value = signInError.message || 'Invalid credentials'

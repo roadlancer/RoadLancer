@@ -2,7 +2,6 @@
 import { ref, reactive } from 'vue'
 import { z } from 'zod'
 import { signUp } from '@/lib/auth-client'
-import { setStoredToken } from '@/lib/auth-client'
 import { fetchSession } from '@/composables/useAuth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -88,25 +87,13 @@ async function handleSubmit() {
 
   submitting.value = true
   try {
-    const result = await signUp.email(
-      {
-        email: form.email,
-        password: form.password,
-        name: form.name,
-        role: form.role,
-        phone: form.phone,
-      } as any,
-      {
-        onSuccess: (ctx: any) => {
-          const token = ctx?.response?.headers?.get?.('set-auth-token')
-            || ctx?.headers?.get?.('set-auth-token')
-            || ''
-          if (token) setStoredToken(token)
-        },
-      } as any,
-    ) as any
-
-    const signUpError = result?.error
+    const { error: signUpError } = await signUp.email({
+      email: form.email,
+      password: form.password,
+      name: form.name,
+      role: form.role,
+      phone: form.phone,
+    } as any)
 
     if (signUpError) {
       submitError.value = signUpError.message || 'Registration failed. Please try again or use a different email/phone.'

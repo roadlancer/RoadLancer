@@ -23,14 +23,6 @@ export function setStoredToken(token: string | null) {
   }
 }
 
-function authFetchOptions() {
-  const token = getStoredToken()
-  return {
-    credentials: 'include' as const,
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  }
-}
-
 export const authClient = createAuthClient({
   baseURL: import.meta.env.VITE_AUTH_URL || '',
   plugins: [customSessionClient()],
@@ -41,4 +33,18 @@ export const authClient = createAuthClient({
 
 export const { signIn, signUp, signOut, useSession } = authClient
 
-export { authFetchOptions }
+const originalFetch = window.fetch.bind(window)
+window.fetch = async (...args) => {
+  const response = await originalFetch(...args)
+  try {
+    if (response instanceof Response) {
+      const token = response.headers.get('set-auth-token')
+      if (token) {
+        setStoredToken(token)
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return response
+}
