@@ -9,10 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Clock, User, Mail, Phone, ExternalLink, Sparkles, AlertTriangle, MessageSquare } from '@lucide/vue'
 import type { SupportTicket } from '@/composables/useSupportTickets'
 import api from '@/lib/api'
-import { generateText } from 'ai'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
-
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY || ''
 
 export interface TicketDetailProps {
   ticket: SupportTicket
@@ -55,96 +51,40 @@ async function handleSummarize() {
   const promptInput = `TICKET SUBJECT: ${props.ticket?.subject || 'N/A'}\n\nORIGINAL CUSTOMER MESSAGE:\n${props.ticket?.message || 'N/A'}\n\nCONVERSATION HISTORY (${repliesList.length} replies):\n${repliesText || 'No replies yet.'}`
 
   try {
-    try {
-      const res = await api.post('/auth/ai/summarize', {
-        subject: props.ticket?.subject,
-        message: props.ticket?.message,
-        replies: repliesList,
-      }, { timeout: 8000 })
-      if (res.data?.summary) {
-        summaryText.value = res.data.summary.trim()
-        aiError.value = null
-        isSummarizing.value = false
-        return
-      }
-    } catch (serverErr: any) {
-      if (serverErr?.response?.data?.code === 'API_KEY_INVALID' || serverErr?.response?.status === 401) {
-        aiError.value = {
-          title: 'Gemini API Key Incorrect / Unauthorized',
-          message: 'The Google Generative AI API key configured on the server is missing or invalid.',
-        }
-        isSummarizing.value = false
-        return
-      }
-      if (serverErr?.response?.data?.code === 'TOKEN_QUOTA_EXHAUSTED' || serverErr?.response?.status === 429) {
-        aiError.value = {
-          title: 'Model Rate Limit / Quota Exceeded',
-          message: 'You have exceeded the free tier rate limit on Gemini. Please retry shortly.',
-        }
-        isSummarizing.value = false
-        return
-      }
-    }
+    const res = await api.post('/auth/ai/summarize', {
+      subject: props.ticket?.subject,
+      message: props.ticket?.message,
+      replies: repliesList,
+    }, { timeout: 30000 })
 
-    const googleProvider = createGoogleGenerativeAI({ apiKey })
-    const systemPrompt = `You are an AI support assistant for RoadLancer (a trucking and logistics platform).
-Your task is to provide a concise, high-level summary of the support ticket and any subsequent conversation/replies.
-Structure your summary cleanly with:
-1. **Issue Overview**: A 1-2 sentence summary of the customer's core issue or request.
-2. **Current Status & Key Updates**: What has been discussed or resolved in the replies so far (if any).
-3. **Next Action Required**: What should the support agent do next to resolve or move this ticket forward.
-Output ONLY the markdown summary directly without extra chatter or intro text.`
-
-    let text = ''
-    try {
-      const res = await generateText({
-        model: googleProvider('gemini-3.1-flash-lite'),
-        maxTokens: 400,
-        temperature: 0.3,
-        maxRetries: 0,
-        system: systemPrompt,
-        prompt: promptInput,
-      })
-      text = res.text
-    } catch (firstErr: any) {
-      const firstMsg = (firstErr?.message || '').toLowerCase()
-      if (firstMsg.includes('quota') || firstMsg.includes('rate') || firstMsg.includes('429') || firstErr?.status === 429 || firstMsg.includes('not found') || firstMsg.includes('404') || firstErr?.status === 404 || firstMsg.includes('is not supported') || firstMsg.includes('invalid model')) {
-        const fallbackRes = await generateText({
-          model: googleProvider('gemini-1.5-flash'),
-          maxTokens: 400,
-          temperature: 0.3,
-          maxRetries: 0,
-          system: systemPrompt,
-          prompt: promptInput,
-        })
-        text = fallbackRes.text
-      } else {
-        throw firstErr
-      }
-    }
-
-    if (text) {
-      summaryText.value = text.trim()
+    if (res.data?.summary) {
+      summaryText.value = res.data.summary.trim()
       aiError.value = null
+      return
     }
-  } catch (err: any) {
-    console.error('Failed to summarize ticket:', err)
-    const errMsg = (err?.message || '').toLowerCase()
-    if (errMsg.includes('api key') || errMsg.includes('key not valid') || errMsg.includes('401') || err?.status === 401 || err?.status === 403) {
+
+    aiError.value = {
+      title: 'Summarization Failed',
+      message: 'The server did not return a summary. Please try again.'
+    }
+  } catch (serverErr: any) {
+    if (serverErr?.response?.data?.code === 'API_KEY_INVALID' || serverErr?.response?.status === 401) {
       aiError.value = {
         title: 'Gemini API Key Incorrect / Unauthorized',
-        message: 'The Google Generative AI API key is missing or invalid.',
+        message: 'The Google Generative AI API key configured on the server is missing or invalid.',
       }
-    } else if (errMsg.includes('quota') || errMsg.includes('rate') || errMsg.includes('429') || err?.status === 429) {
+      return
+    }
+    if (serverErr?.response?.data?.code === 'TOKEN_QUOTA_EXHAUSTED' || serverErr?.response?.status === 429) {
       aiError.value = {
         title: 'Model Rate Limit / Quota Exceeded',
-        message: 'You have exceeded the free tier rate limit. Please wait a moment and retry.',
+        message: 'You have exceeded the free tier rate limit on Gemini. Please retry shortly.',
       }
-    } else {
-      aiError.value = {
-        title: 'Summarization Failed',
-        message: err?.message || 'Could not generate summary at this time.',
-      }
+      return
+    }
+    aiError.value = {
+      title: 'Summarization Failed',
+      message: serverErr?.message || 'Could not reach the AI server. Please try again later.'
     }
   } finally {
     isSummarizing.value = false
