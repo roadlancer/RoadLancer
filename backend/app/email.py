@@ -1,4 +1,5 @@
 import os
+import sys
 import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
@@ -17,7 +18,7 @@ def send_reply_email(
     smtp_password = os.getenv("SMTP_APP_PASSWORD", "")
 
     if not smtp_email or not smtp_password:
-        print(f"⚠️ [email] SMTP not configured — skipping email to {to_email}")
+        print(f"⚠️ [email] SMTP not configured — skipping email to {to_email}", flush=True)
         return False
 
     msg = MIMEMultipart("alternative")
@@ -36,8 +37,10 @@ def send_reply_email(
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
             server.login(smtp_email, smtp_password)
             server.sendmail(smtp_email, to_email, msg.as_string())
-        print(f"✅ [email] Reply sent to {to_email} for ticket {ticket_number}")
+        print(f"✅ [email] Reply sent to {to_email} for ticket {ticket_number}", flush=True)
+        print(f"✅ [email] Reply sent to {to_email} for ticket {ticket_number}", file=sys.stderr, flush=True)
         return True
     except Exception as e:
-        print(f"❌ [email] Failed to send reply to {to_email}: {e}")
+        print(f"❌ [email] Failed to send reply to {to_email}: {e}", flush=True)
+        print(f"❌ [email] Failed to send reply to {to_email}: {e}", file=sys.stderr, flush=True)
         return False
