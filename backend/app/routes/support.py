@@ -1061,7 +1061,8 @@ async def user_create_ticket_reply(
 @router.get("/test-email")
 async def test_email_endpoint():
     """Test endpoint to verify email sending works on Railway."""
-    result = await send_reply_email(
+    result = await asyncio.to_thread(
+        send_reply_email,
         "support.roadlancer@gmail.com",
         "Test Email from RoadLancer",
         "<h1>Test</h1><p>If you see this, email sending works on Railway!</p>",
