@@ -1058,3 +1058,17 @@ async def user_create_ticket_reply(
     replies = await fetch_ticket_replies(ticket.id)
     return ticket_to_dict(ticket, user_map, replies)
 
+
+@router.get("/test-email")
+async def test_email_endpoint():
+    """Test endpoint to verify Gmail SMTP SSL works on Railway."""
+    result = await asyncio.to_thread(
+        send_reply_email,
+        "support.roadlancer@gmail.com",
+        "Test Email from RoadLancer",
+        "<h1>Test</h1><p>If you see this, Gmail SMTP SSL (port 465) works on Railway!</p>",
+        "TICK-TEST",
+        "RoadLancer Test",
+    )
+    return {"email_sent": result}
+
