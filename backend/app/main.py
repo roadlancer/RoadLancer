@@ -5,7 +5,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from app.routes import shipments, auth, admin, verification, users, support
+from app.routes import shipments, auth, admin, verification, users, support, ai_proxy
 from app.middleware import RequestLoggingMiddleware, RateLimitMiddleware
 from app.database import connect_db, disconnect_db
 
@@ -54,6 +54,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(ai_proxy.router, prefix="/api/auth", tags=["ai-proxy"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api", tags=["users"])
 app.include_router(shipments.router, prefix="/api/shipments", tags=["shipments"])
