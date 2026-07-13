@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { authClient } from '@/lib/auth-client'
+import { authClient, getStoredToken, setStoredToken, authFetchOptions } from '@/lib/auth-client'
 import api from '@/lib/api'
 
 interface User {
@@ -20,6 +20,21 @@ let requestId = 0
 
 export { user, loading }
 
+export function extractAndStoreToken(response: any) {
+  try {
+    const token = response?.headers?.get?.('set-auth-token')
+      || response?.response?.headers?.get?.('set-auth-token')
+      || null
+    if (token) {
+      setStoredToken(token)
+      return token
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
 export async function fetchSession(force = false) {
   if (fetchPromise && !force) {
     return fetchPromise
@@ -32,8 +47,11 @@ export async function fetchSession(force = false) {
       const timeoutPromise = new Promise<{ data: any }>((_, reject) =>
         setTimeout(() => reject(new Error('Auth request timed out')), 10000)
       )
-      const sessionPromise = authClient.getSession()
-      const { data } = await Promise.race([sessionPromise, timeoutPromise])
+      const sessionPromise = authClient.getSession({
+        fetchOptions: authFetchOptions(),
+      } as any)
+      const result = await Promise.race([sessionPromise, timeoutPromise])
+      const data = result?.data ?? result
       if (currentRequestId === requestId) {
         user.value = (data?.user as unknown as User) ?? null
       }
@@ -64,7 +82,12 @@ export function useAuth() {
     } catch {
       // ignore backend errors, still sign out locally
     }
-    await authClient.signOut()
+    try {
+      await authClient.signOut({ fetchOptions: authFetchOptions() } as any)
+    } catch {
+      // ignore
+    }
+    setStoredToken(null)
     user.value = null
     window.location.href = '/login'
   }

@@ -2,7 +2,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { z } from 'zod'
-import { signIn, authClient } from '@/lib/auth-client'
+import { signIn, authClient, setStoredToken } from '@/lib/auth-client'
 import { useAuth, user } from '@/composables/useAuth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { LoaderCircle, Mail, Lock, Phone, AlertCircle, Truck, Shield, Eye, EyeOff } from '@lucide/vue'
+import { LoaderCircle, Mail, Lock, Phone, AlertCircle, Truck, Eye, EyeOff } from '@lucide/vue'
 
 const router = useRouter()
 const { fetchSession } = useAuth()
@@ -65,14 +65,33 @@ async function handleSubmit() {
   submitting.value = true
   try {
     const email = activeTab.value === 'email' ? form.email : form.phone
-    const { data: signInData, error: signInError } = await signIn.email({
-      email,
-      password: form.password,
-    })
+    const result = await signIn.email(
+      {
+        email,
+        password: form.password,
+      },
+      {
+        onSuccess: (ctx: any) => {
+          const token = ctx?.response?.headers?.get?.('set-auth-token')
+            || ctx?.headers?.get?.('set-auth-token')
+            || ''
+          if (token) {
+            setStoredToken(token)
+          }
+        },
+      } as any,
+    ) as any
+
+    const signInError = result?.error
+    const signInData = result?.data
 
     if (signInError) {
       submitError.value = signInError.message || 'Invalid credentials'
       return
+    }
+
+    if (!user.value && signInData?.user) {
+      user.value = signInData.user as any
     }
 
     await fetchSession(true)
@@ -87,6 +106,7 @@ async function handleSubmit() {
     if (actualRole && actualRole !== form.role) {
       submitError.value = 'Invalid email, password, or role selection.'
       await authClient.signOut()
+      setStoredToken(null)
       user.value = null
       return
     }
@@ -94,6 +114,7 @@ async function handleSubmit() {
     if (userStatus === 'rejected') {
       submitError.value = 'Your account has been rejected. Please contact support.'
       await authClient.signOut()
+      setStoredToken(null)
       user.value = null
       return
     }
