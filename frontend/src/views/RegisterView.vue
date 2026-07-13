@@ -101,7 +101,8 @@ async function handleSubmit() {
     }
 
     // Store the session token from signUp response (better-auth bearer plugin)
-    const signUpToken = signUpData?.session?.token
+    // Token is at top level: signUpData.token (NOT signUpData.session.token)
+    const signUpToken = signUpData?.token || signUpData?.session?.token
     if (signUpToken) {
       setStoredToken(signUpToken)
     }

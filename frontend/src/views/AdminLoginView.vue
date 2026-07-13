@@ -65,19 +65,21 @@ async function handleSubmit() {
     }
 
     // Store the session token from signIn response (better-auth bearer plugin)
-    const signInToken = signInData?.session?.token
+    // Token is at top level: signInData.token (NOT signInData.session.token)
+    const signInToken = signInData?.token || signInData?.session?.token
     if (signInToken) {
       setStoredToken(signInToken)
     }
 
-    // Set user from signIn response if available
+    // Set user from signIn response
     if (signInData?.user) {
       user.value = signInData.user as any
     }
 
+    // fetchSession with stored token (now in localStorage)
     await fetchSession(true)
 
-    // Fallback: if user still null, use signIn response data
+    // If fetchSession failed but we have signIn data, keep it
     if (!user.value && signInData?.user) {
       user.value = signInData.user as any
     }
