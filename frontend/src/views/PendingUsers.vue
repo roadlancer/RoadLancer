@@ -67,7 +67,8 @@ function confirmReject() {
 }
 
 watch([user, loading], ([u, l]) => {
-  if (!l && (!u || u.role !== 'admin')) router.replace('/login')
+  if (l) return
+  if (!u || u.role !== 'admin') router.replace('/login')
 })
 </script>
 

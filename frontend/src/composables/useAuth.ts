@@ -16,6 +16,7 @@ const user = ref<User | null>(null)
 const loading = ref(true)
 let initialized = false
 let fetchPromise: Promise<void> | null = null
+let requestId = 0
 
 export { user, loading }
 
@@ -24,6 +25,7 @@ export async function fetchSession(force = false) {
     return fetchPromise
   }
 
+  const currentRequestId = ++requestId
   loading.value = true
   fetchPromise = (async () => {
     try {
@@ -32,12 +34,18 @@ export async function fetchSession(force = false) {
       )
       const sessionPromise = authClient.getSession()
       const { data } = await Promise.race([sessionPromise, timeoutPromise])
-      user.value = (data?.user as unknown as User) ?? null
+      if (currentRequestId === requestId) {
+        user.value = (data?.user as unknown as User) ?? null
+      }
     } catch {
-      user.value = null
+      if (currentRequestId === requestId) {
+        user.value = null
+      }
     } finally {
-      loading.value = false
-      fetchPromise = null
+      if (currentRequestId === requestId) {
+        loading.value = false
+        fetchPromise = null
+      }
     }
   })()
 

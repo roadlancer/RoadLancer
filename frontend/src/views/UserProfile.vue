@@ -17,10 +17,9 @@ const { data: verification, isLoading: loadingStatus } = useVerificationStatus()
 const verificationStatus = computed(() => verification.value?.status ?? 'none')
 
 watch([user, loading], ([u, l]) => {
-  if (!l) {
-    if (!u) router.replace('/login')
-    else if (u.role !== 'driver' && u.role !== 'shipper') router.replace('/')
-  }
+  if (l) return
+  if (!u) router.replace('/login')
+  else if (u.role !== 'driver' && u.role !== 'shipper') router.replace('/')
 })
 
 </script>

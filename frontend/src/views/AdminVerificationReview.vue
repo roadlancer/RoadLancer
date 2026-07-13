@@ -45,10 +45,9 @@ const verificationRejectReasons = [
 ]
 
 watch([user, loading], ([u, l]) => {
-  if (!l) {
-    if (!u) router.replace('/login')
-    else if (u.role !== 'admin') router.replace('/')
-  }
+  if (l) return
+  if (!u) router.replace('/login')
+  else if (u.role !== 'admin') router.replace('/')
 })
 
 async function viewDetails(v: any) {
