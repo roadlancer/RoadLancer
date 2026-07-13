@@ -8,6 +8,7 @@ dependencies = [
     "bcrypt>=5.0.0",
     "fastapi>=0.138.1",
     "fastapi-betterauth>=0.2.6",
+    "httpx>=0.28.0",
     "prisma>=0.15.0",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
