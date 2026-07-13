@@ -970,7 +970,8 @@ async def admin_create_ticket_reply(
         </div>
         """
         asyncio.create_task(
-            send_reply_email(
+            asyncio.to_thread(
+                send_reply_email,
                 ticket.senderEmail,
                 ticket.subject,
                 html_email,
