@@ -20,9 +20,10 @@ def send_reply_email(
 
     # Try Gmail API first
     gmail_user = os.getenv("GMAIL_USER_EMAIL", "")
+    token_json = os.getenv("GMAIL_TOKEN_JSON", "")
     service_account_json = os.getenv("GMAIL_SERVICE_ACCOUNT_JSON", "")
 
-    if gmail_user and service_account_json:
+    if gmail_user and (token_json or service_account_json):
         result = send_email_via_gmail(to_email, subject, html_body, ticket_number, sender_name)
         if result:
             return True
