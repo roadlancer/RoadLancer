@@ -32,6 +32,8 @@ class InboundEmailRequest(BaseModel):
     secret: Optional[str] = None
     gmail_thread_id: Optional[str] = None
     gmail_message_id: Optional[str] = None
+    in_reply_to: Optional[str] = None
+    references: Optional[str] = None
 
 
 class CreateTicketRequest(BaseModel):
@@ -79,6 +81,9 @@ async def ensure_ticket_replies_table():
             );
         """)
         await db.query_raw("ALTER TABLE ticket_replies ADD COLUMN IF NOT EXISTS sender_type TEXT NOT NULL DEFAULT 'agent';")
+        # Add email threading columns if they don't exist
+        await db.query_raw('ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS "in_reply_to" TEXT;')
+        await db.query_raw('ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS "references" TEXT;')
     except Exception:
         pass
 
@@ -269,13 +274,19 @@ async def simulate_inbound_email(
             detail="Prisma client attribute 'support_tickets' missing. Please run 'python -m prisma generate' inside the backend folder and restart your FastAPI server.",
         )
 
+    # Validate sender email exists in the application
+    user = await db.user.find_unique(where={"email": req.from_email.lower()})
+    if not user:
+        raise HTTPException(
+            status_code=403,
+            detail="Email address not registered in the application. Only emails from registered users are accepted.",
+        )
+
     last_exc = None
     for _attempt in range(3):
         try:
-            # Check if sender matches an existing user
-            user = await db.user.find_unique(where={"email": req.from_email.lower()})
-            user_id = user.id if user else None
-            sender_name = req.from_name or (user.name if user else req.from_email)
+            user_id = user.id
+            sender_name = req.from_name or user.name
 
             ticket_number = await generate_unique_ticket_number()
 
@@ -293,6 +304,8 @@ async def simulate_inbound_email(
                     "status": "new",
                     "gmailThreadId": req.gmail_thread_id,
                     "gmailMessageId": req.gmail_message_id,
+                    "inReplyTo": req.in_reply_to,
+                    "references": req.references,
                 }
             )
             asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.body, sender_name))
@@ -400,9 +413,14 @@ async def handle_resend_webhook(request: Request):
     if not from_email:
         raise HTTPException(status_code=400, detail="Missing sender email")
 
+    # Validate sender email exists in the application
     user = await db.user.find_unique(where={"email": from_email.lower()})
-    user_id = user.id if user else None
-    sender_name = (user.name if user else None) or from_email.split("@")[0]
+    if not user:
+        print(f"⚠️ [resend-webhook] Email {from_email} not registered in application, skipping ticket creation")
+        return {"received": True, "ignored": True, "reason": "email not registered"}
+
+    user_id = user.id
+    sender_name = user.name or from_email.split("@")[0]
 
     last_exc = None
     for _attempt in range(3):
@@ -955,36 +973,55 @@ async def admin_create_ticket_reply(
         )
 
     if ticket.senderEmail:
-        html_email = f"""
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: #0d9488; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0;">
-                <h2 style="margin: 0; font-size: 16px;">RoadLancer Support</h2>
-                <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Ticket #{ticket.ticketNumber}</p>
-            </div>
-            <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
-                <p style="color: #374151; font-size: 14px;">Hi {ticket.senderName or ''},</p>
-                <p style="color: #374151; font-size: 14px;">{sender_name} has replied to your support ticket:</p>
-                <div style="background: white; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
-                    <p style="color: #1f2937; font-size: 14px; white-space: pre-wrap;">{req.message.strip()}</p>
+        # Validate recipient email exists in the application before sending
+        recipient_user = await db.user.find_unique(where={"email": ticket.senderEmail.lower()})
+        if not recipient_user:
+            print(f"⚠️ [admin-reply] Recipient email {ticket.senderEmail} not registered, skipping outbound email")
+        else:
+            html_email = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <div style="background: #0d9488; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0;">
+                    <h2 style="margin: 0; font-size: 16px;">RoadLancer Support</h2>
+                    <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Ticket #{ticket.ticketNumber}</p>
                 </div>
-                <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
-                    You can reply directly to this email to continue the conversation.
-                </p>
+                <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
+                    <p style="color: #374151; font-size: 14px;">Hi {ticket.senderName or ''},</p>
+                    <p style="color: #374151; font-size: 14px;">{sender_name} has replied to your support ticket:</p>
+                    <div style="background: white; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
+                        <p style="color: #1f2937; font-size: 14px; white-space: pre-wrap;">{req.message.strip()}</p>
+                    </div>
+                    <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
+                        You can reply directly to this email to continue the conversation.
+                    </p>
+                </div>
             </div>
-        </div>
-        """
-        asyncio.create_task(
-            asyncio.to_thread(
-                send_reply_email,
-                ticket.senderEmail,
-                ticket.subject,
-                html_email,
-                ticket.ticketNumber,
-                sender_name,
-                gmail_thread_id=getattr(ticket, 'gmailThreadId', None),
-                gmail_message_id=getattr(ticket, 'gmailMessageId', None),
+            """
+            # Use in_reply_to and references for proper email threading
+            # If we have in_reply_to from incoming email, use it; otherwise use gmail_message_id
+            reply_to_message_id = getattr(ticket, 'inReplyTo', None) or getattr(ticket, 'gmailMessageId', None)
+            # If we have references from incoming email, append our message-id; otherwise start with reply_to_message_id
+            reply_references = getattr(ticket, 'references', None)
+            if reply_references and reply_to_message_id:
+                # Append our reply's message-id will be added by Gmail API
+                references_header = f"{reply_references} {reply_to_message_id}"
+            elif reply_to_message_id:
+                references_header = reply_to_message_id
+            else:
+                references_header = None
+            
+            asyncio.create_task(
+                asyncio.to_thread(
+                    send_reply_email,
+                    ticket.senderEmail,
+                    ticket.subject,
+                    html_email,
+                    ticket.ticketNumber,
+                    sender_name,
+                    gmail_thread_id=getattr(ticket, 'gmailThreadId', None),
+                    gmail_message_id=reply_to_message_id,
+                    references=references_header,
+                )
             )
-        )
 
     users = await db.user.find_many()
     user_map = {u.id: u for u in users}
@@ -1116,9 +1153,14 @@ async def handle_gmail_pubsub(request: Request):
             if not from_email or not subject:
                 continue
 
+            # Validate sender email exists in the application
             user = await db.user.find_unique(where={"email": from_email.lower()})
-            user_id = user.id if user else None
-            sender_name = (user.name if user else None) or from_email.split("@")[0].replace(".", " ").title()
+            if not user:
+                logger.info(f"Gmail webhook: Email {from_email} not registered, skipping")
+                continue
+
+            user_id = user.id
+            sender_name = user.name or from_email.split("@")[0].replace(".", " ").title()
 
             ticket_number = await generate_unique_ticket_number()
 

@@ -61,6 +61,8 @@ function processMessage(msg, label) {
   const date = msg.getDate();
   const threadId = msg.getThread().getId();
   const messageId = msg.getHeader("Message-ID") || "";
+  const inReplyTo = msg.getHeader("In-Reply-To") || "";
+  const references = msg.getHeader("References") || "";
 
   // Skip emails from ourselves (sent by RoadLancer)
   if (fromEmail === "support.roadlancer@gmail.com") {
@@ -90,7 +92,9 @@ function processMessage(msg, label) {
     source: "email",
     received_at: date.toISOString(),
     gmail_thread_id: threadId,
-    gmail_message_id: messageId
+    gmail_message_id: messageId,
+    in_reply_to: inReplyTo,
+    references: references
   };
 
   Logger.log("Forwarding email from " + fromEmail + ": " + subject);
@@ -112,7 +116,16 @@ function processMessage(msg, label) {
     const responseBody = response.getContentText();
 
     if (responseCode === 200) {
-      Logger.log("✅ Email forwarded successfully: " + subject);
+      const responseObj = JSON.parse(responseBody);
+      if (responseObj.ignored) {
+        Logger.log("⚠️ Email ignored (not registered or not processed): " + subject);
+        label.addToThread(msg.getThread());
+      } else {
+        Logger.log("✅ Email forwarded successfully: " + subject);
+        label.addToThread(msg.getThread());
+      }
+    } else if (responseCode === 403) {
+      Logger.log("⚠️ Email rejected (sender not registered): " + fromEmail);
       label.addToThread(msg.getThread());
     } else {
       Logger.log("❌ Webhook error (" + responseCode + "): " + responseBody);

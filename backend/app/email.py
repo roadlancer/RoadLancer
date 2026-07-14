@@ -16,6 +16,7 @@ def send_reply_email(
     sender_name: str = "RoadLancer Support",
     gmail_thread_id: str = None,
     gmail_message_id: str = None,
+    references: str = None,
 ) -> bool:
     """Send a support reply email. Tries Gmail API first, falls back to Resend."""
     from app.gmail_client import send_email_via_gmail
@@ -30,7 +31,7 @@ def send_reply_email(
             to_email, subject, html_body, ticket_number, sender_name,
             thread_id=gmail_thread_id,
             in_reply_to=gmail_message_id,
-            references=gmail_message_id,
+            references=references or gmail_message_id,
         )
         if result:
             return True
