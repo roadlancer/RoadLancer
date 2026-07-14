@@ -80,18 +80,36 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 
 ### Inbound (Customer Email → Support Ticket)
 - Google Apps Script forwards emails from `support.roadlancer@gmail.com` to `/api/support/inbound-email` webhook
+- **Only registered users' emails are accepted** (validated against user table)
 - Backend validates sender email exists in user table
 - Creates `support_tickets` record with email threading headers
+- Webhook secret validation (`x-webhook-secret` header) for production security
 
 ### Outbound (Admin Reply → Customer Email)
 - Admin replies via `POST /api/support/admin/{ticket_id}/replies`
 - Backend validates recipient email exists in user table
 - Sends email via Gmail API with proper threading (In-Reply-To, References headers)
+- Falls back to Resend API if Gmail API fails
+
+### AI Auto-Resolution Email Notifications
+- pg-boss worker processes tickets asynchronously
+- AI agent auto-resolves simple tickets and sends email notification
+- Auth server calls backend `/notify-email` endpoint (synchronous)
+- Email sent with proper threading headers (In-Reply-To, References)
+- All replies come from `support.roadlancer@gmail.com` (single sender address)
 
 ### Email Threading
-- `in_reply_to` and `references` columns on `support_tickets` table
+- `in_reply_to` and `email_references` columns on `support_tickets` table
+- Column renamed from `references` to `email_references` (PostgreSQL reserved keyword fix)
 - Gmail Apps Script captures `In-Reply-To` and `References` headers from incoming emails
-- Admin replies use these headers for proper email threading
+- Admin/AI replies use these headers for proper email threading
+- Thread headers stored and used for all outbound emails
+
+### Email Security
+- Only registered users can create tickets via email (inbound validation)
+- Only registered users receive replies (outbound validation)
+- Git history cleaned to remove leaked credentials
+- All secrets stored in Railway environment variables only
 
 ---
 
@@ -101,3 +119,18 @@ Three-service architecture: **FastAPI** (Python) for business logic, **Better Au
 - **E2E:** Playwright for critical full-stack flows only
 - **Test location:** `frontend/src/**/*.spec.ts`
 - **Run tests:** `bunx vitest run` (from frontend/ directory)
+
+---
+
+## Security Notes
+
+### Credential Management
+- All API keys, passwords, and secrets stored in Railway environment variables
+- No hardcoded credentials in source code
+- Git history cleaned with `git-filter-repo` to remove leaked credentials
+- `.env` files are `.gitignore`d and never committed
+
+### Production Security
+- Webhook endpoints require `x-webhook-secret` header for authentication
+- Email validation ensures only registered users can create/receive tickets
+- Session-based auth via Bearer token (not JWT)
