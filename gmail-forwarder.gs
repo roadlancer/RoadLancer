@@ -272,13 +272,13 @@ function createTimeTrigger() {
     }
   }
 
-  // Create new trigger: run every 2 minutes
+  // Create new trigger: run every 5 minutes
   ScriptApp.newTrigger("forwardEmails")
     .timeBased()
-    .everyMinutes(2)
+    .everyMinutes(5)
     .create();
 
-  Logger.log("✅ Auto-forwarding trigger created (every 2 minutes)");
+  Logger.log("✅ Auto-forwarding trigger created (every 5 minutes)");
 }
 
 function removeAllTriggers() {
