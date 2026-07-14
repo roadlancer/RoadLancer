@@ -274,6 +274,9 @@ async def simulate_inbound_email(
             detail="Prisma client attribute 'support_tickets' missing. Please run 'python -m prisma generate' inside the backend folder and restart your FastAPI server.",
         )
 
+    # Ensure threading columns exist (migration)
+    await ensure_ticket_replies_table()
+
     # Validate sender email exists in the application
     user = await db.user.find_unique(where={"email": req.from_email.lower()})
     if not user:
@@ -412,6 +415,9 @@ async def handle_resend_webhook(request: Request):
 
     if not from_email:
         raise HTTPException(status_code=400, detail="Missing sender email")
+
+    # Ensure threading columns exist (migration)
+    await ensure_ticket_replies_table()
 
     # Validate sender email exists in the application
     user = await db.user.find_unique(where={"email": from_email.lower()})
@@ -1139,6 +1145,9 @@ async def handle_gmail_pubsub(request: Request):
         history_id = data_json.get("historyId", "")
 
         logger.info(f"Gmail notification: email={email_address}, historyId={history_id}")
+
+        # Ensure threading columns exist (migration)
+        await ensure_ticket_replies_table()
 
         from app.gmail_client import list_recent_emails, mark_email_as_read
 
