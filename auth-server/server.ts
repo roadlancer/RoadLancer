@@ -337,7 +337,7 @@ Return strictly valid JSON with no markdown formatting or extra text:
             // Send email notification for auto-resolved ticket
             try {
               const ticketRows = await prisma.$queryRawUnsafe<any[]>(
-                `SELECT id, ticket_number, sender_email, sender_name, subject 
+                `SELECT id, ticket_number, sender_email, sender_name, subject, in_reply_to, gmail_message_id, gmail_thread_id, email_references 
                  FROM support_tickets WHERE id = $1 OR ticket_number = $1 LIMIT 1`,
                 ticketId
               );

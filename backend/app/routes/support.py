@@ -83,7 +83,7 @@ async def ensure_ticket_replies_table():
         await db.query_raw("ALTER TABLE ticket_replies ADD COLUMN IF NOT EXISTS sender_type TEXT NOT NULL DEFAULT 'agent';")
         # Add email threading columns if they don't exist
         await db.query_raw('ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS "in_reply_to" TEXT;')
-        await db.query_raw('ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS "references" TEXT;')
+        await db.query_raw('ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS "email_references" TEXT;')
     except Exception:
         pass
 
@@ -144,6 +144,10 @@ def ticket_to_dict(t, user_map=None, replies=None) -> dict:
         "user_id": t.userId,
         "user": user_info,
         "admin_notes": t.adminNotes,
+        "gmail_thread_id": getattr(t, "gmailThreadId", None),
+        "gmail_message_id": getattr(t, "gmailMessageId", None),
+        "in_reply_to": getattr(t, "inReplyTo", None),
+        "email_references": getattr(t, "emailReferences", None),
         "replies": formatted_replies,
         "created_at": (t.createdAt if isinstance(t.createdAt, str) else t.createdAt.isoformat()) if t.createdAt else None,
         "updated_at": (t.updatedAt if isinstance(t.updatedAt, str) else t.updatedAt.isoformat()) if t.updatedAt else None,
@@ -308,7 +312,7 @@ async def simulate_inbound_email(
                     "gmailThreadId": req.gmail_thread_id,
                     "gmailMessageId": req.gmail_message_id,
                     "inReplyTo": req.in_reply_to,
-                    "references": req.references,
+                    "emailReferences": req.references,
                 }
             )
             asyncio.create_task(classify_ticket_background(ticket.id, req.subject, req.body, sender_name))
@@ -1006,7 +1010,7 @@ async def admin_create_ticket_reply(
             # If we have in_reply_to from incoming email, use it; otherwise use gmail_message_id
             reply_to_message_id = getattr(ticket, 'inReplyTo', None) or getattr(ticket, 'gmailMessageId', None)
             # If we have references from incoming email, append our message-id; otherwise start with reply_to_message_id
-            reply_references = getattr(ticket, 'references', None)
+            reply_references = getattr(ticket, 'emailReferences', None)
             if reply_references and reply_to_message_id:
                 # Append our reply's message-id will be added by Gmail API
                 references_header = f"{reply_references} {reply_to_message_id}"
@@ -1284,7 +1288,7 @@ async def send_notification_email(
         references_header = None
         if ticket:
             reply_to_message_id = getattr(ticket, 'inReplyTo', None) or getattr(ticket, 'gmailMessageId', None)
-            references_header = getattr(ticket, 'references', None)
+            references_header = getattr(ticket, 'emailReferences', None)
         
         # Send email synchronously and report result
         email_result = await asyncio.to_thread(

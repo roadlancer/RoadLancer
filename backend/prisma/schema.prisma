@@ -244,7 +244,7 @@ model support_tickets {
   gmailThreadId   String?  @map("gmail_thread_id") @db.Text
   gmailMessageId  String?  @map("gmail_message_id") @db.Text
   inReplyTo       String?  @map("in_reply_to") @db.Text
-  references      String?  @db.Text
+  emailReferences String?  @map("email_references") @db.Text
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
