@@ -1223,3 +1223,91 @@ async def gmail_status():
     }
 
 
+@router.post("/notify-email")
+async def send_notification_email(
+    request: Request,
+    x_webhook_secret: Optional[str] = Header(None, alias="x-webhook-secret"),
+):
+    """
+    Internal endpoint to send notification email after AI auto-resolution.
+    Called by auth-server after ticket is auto-resolved.
+    """
+    expected_secret = os.getenv("SUPPORT_WEBHOOK_SECRET", "roadlancer-webhook-secret-2026")
+    provided_secret = x_webhook_secret
+    
+    if provided_secret != expected_secret:
+        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+    
+    try:
+        data = await request.json()
+        ticket_id = data.get("ticketId")
+        recipient_email = data.get("recipientEmail")
+        recipient_name = data.get("recipientName", "")
+        subject = data.get("subject", "")
+        reply_message = data.get("replyMessage", "")
+        ticket_number = data.get("ticketNumber", "")
+        
+        if not ticket_id or not recipient_email or not reply_message:
+            raise HTTPException(status_code=400, detail="Missing required fields")
+        
+        # Validate recipient email exists
+        user = await db.user.find_unique(where={"email": recipient_email.lower()})
+        if not user:
+            print(f"⚠️ [notify-email] Recipient {recipient_email} not registered, skipping")
+            return {"sent": False, "reason": "email not registered"}
+        
+        # Fetch ticket for threading info
+        ticket = await db.support_tickets.find_unique(where={"id": ticket_id})
+        if not ticket:
+            ticket = await db.support_tickets.find_unique(where={"ticketNumber": ticket_id})
+        
+        html_email = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: #0d9488; color: white; padding: 16px 24px; border-radius: 8px 8px 0 0;">
+                <h2 style="margin: 0; font-size: 16px;">RoadLancer Support</h2>
+                <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Ticket #{ticket_number}</p>
+            </div>
+            <div style="background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
+                <p style="color: #374151; font-size: 14px;">Hi {recipient_name or ''},</p>
+                <div style="background: white; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 16px 0;">
+                    <p style="color: #1f2937; font-size: 14px; white-space: pre-wrap;">{reply_message}</p>
+                </div>
+                <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
+                    This is an automated response from RoadLancer AI Support.
+                </p>
+            </div>
+        </div>
+        """
+        
+        # Use threading info if available
+        reply_to_message_id = None
+        references_header = None
+        if ticket:
+            reply_to_message_id = getattr(ticket, 'inReplyTo', None) or getattr(ticket, 'gmailMessageId', None)
+            references_header = getattr(ticket, 'references', None)
+        
+        asyncio.create_task(
+            asyncio.to_thread(
+                send_reply_email,
+                recipient_email,
+                subject,
+                html_email,
+                ticket_number,
+                "RoadLancer AI Agent",
+                gmail_thread_id=getattr(ticket, 'gmailThreadId', None) if ticket else None,
+                gmail_message_id=reply_to_message_id,
+                references=references_header,
+            )
+        )
+        
+        print(f"✅ [notify-email] AI resolution email queued for {recipient_email} (ticket {ticket_number})")
+        return {"sent": True, "recipient": recipient_email}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [notify-email] Error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+
+
