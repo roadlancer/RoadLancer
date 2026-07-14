@@ -1286,22 +1286,25 @@ async def send_notification_email(
             reply_to_message_id = getattr(ticket, 'inReplyTo', None) or getattr(ticket, 'gmailMessageId', None)
             references_header = getattr(ticket, 'references', None)
         
-        asyncio.create_task(
-            asyncio.to_thread(
-                send_reply_email,
-                recipient_email,
-                subject,
-                html_email,
-                ticket_number,
-                "RoadLancer AI Agent",
-                gmail_thread_id=getattr(ticket, 'gmailThreadId', None) if ticket else None,
-                gmail_message_id=reply_to_message_id,
-                references=references_header,
-            )
+        # Send email synchronously and report result
+        email_result = await asyncio.to_thread(
+            send_reply_email,
+            recipient_email,
+            subject,
+            html_email,
+            ticket_number,
+            "RoadLancer AI Agent",
+            gmail_thread_id=getattr(ticket, 'gmailThreadId', None) if ticket else None,
+            gmail_message_id=reply_to_message_id,
+            references=references_header,
         )
         
-        print(f"✅ [notify-email] AI resolution email queued for {recipient_email} (ticket {ticket_number})")
-        return {"sent": True, "recipient": recipient_email}
+        if email_result:
+            print(f"✅ [notify-email] AI resolution email sent to {recipient_email} (ticket {ticket_number})")
+            return {"sent": True, "recipient": recipient_email}
+        else:
+            print(f"❌ [notify-email] Failed to send email to {recipient_email} (ticket {ticket_number})")
+            return {"sent": False, "reason": "email sending failed", "recipient": recipient_email}
         
     except HTTPException:
         raise
